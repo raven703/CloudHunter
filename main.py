@@ -4,6 +4,7 @@ import threading
 import tkinter as tk
 from queue import Queue, Empty
 import re
+import sys
 
 class EveRealTimeUI:
     def __init__(self, exe_path):
@@ -12,7 +13,7 @@ class EveRealTimeUI:
         self.running = True
         
         self.root = tk.Tk()
-        self.root.title("EVE Online Radar: Modules & Targets")
+        self.root.title("EVE Radar: Targets & Click Points")
         self.root.geometry("1100x850")
         self.root.configure(bg='#0a0a0a')
 
@@ -24,7 +25,7 @@ class EveRealTimeUI:
         
         self.status_label = tk.Label(
             self.status_frame, 
-            text="Ожидание данных...", 
+            text="Initializing...", 
             fg="#00ccff", bg="#111111", 
             font=("Consolas", 10), justify=tk.LEFT, anchor="w",
             padx=15, pady=10
@@ -33,18 +34,30 @@ class EveRealTimeUI:
         
         self.scale = 0.6
         self.current_modules = {}
-        self.current_targets = []
-        self.is_locked = False # Глобальный статус лока
-
-    def get_val(self, val):
-        if isinstance(val, dict): return val.get('int_low32', 0)
-        return val if isinstance(val, (int, float)) else 0
+        # Словарь объектов целей: {address: {"name": str, "x": int, "y": int}}
+        self.current_targets = {}
+        self.is_locked = False
 
     def clean_html(self, raw_html):
-        """Очистка имен целей от тегов <color> и т.д."""
         cleanr = re.compile('<.*?>')
         cleantext = re.sub(cleanr, '', str(raw_html))
-        return cleantext
+        return cleantext.strip()
+
+    def find_target_name(self, node):
+        if not isinstance(node, dict): return None
+        ent = node.get('dictEntriesOfInterest', {})
+        text = ent.get('_text')
+        
+        if text and len(str(text)) > 1 and "barandimagecont" not in str(text):
+            cleaned = self.clean_html(text)
+            if cleaned: return cleaned
+            
+        children = node.get('children') or ent.get('children')
+        if isinstance(children, list):
+            for child in children:
+                res = self.find_target_name(child)
+                if res: return res
+        return None
 
     def draw_recursive(self, node, px, py):
         if not isinstance(node, dict): return
@@ -52,13 +65,17 @@ class EveRealTimeUI:
         ei = node.get('dictEntriesOfInterest', {})
         children = node.get('children') or ei.get('children')
 
-        lx = self.get_val(ei.get('_displayX', 0))
-        ly = self.get_val(ei.get('_displayY', 0))
-        w = self.get_val(ei.get('_displayWidth', 0))
-        h = self.get_val(ei.get('_displayHeight', 0))
+        def v(val):
+            if isinstance(val, dict): return val.get('int_low32', 0)
+            return val if isinstance(val, (int, float)) else 0
+
+        lx, ly = v(ei.get('_displayX')), v(ei.get('_displayY'))
+        w, h = v(ei.get('_displayWidth')), v(ei.get('_displayHeight'))
         
+        # Абсолютные координаты в окне игры
         ax, ay = px + lx, py + ly
         obj_type = node.get('pythonObjectTypeName', '')
+        obj_addr = node.get('pythonObjectAddress', id(node))
         name = ei.get('_name', '')
 
         if w > 1 and h > 1:
@@ -69,7 +86,7 @@ class EveRealTimeUI:
             is_important = False
             label_text = name
 
-            # --- 1. ЛОГИКА МОДУЛЕЙ ---
+            # --- МОДУЛИ ---
             if obj_type == "ShipSlot":
                 is_important = True
                 active = False
@@ -81,30 +98,27 @@ class EveRealTimeUI:
                 self.current_modules[name] = "ACTIVE" if active else "READY"
                 color = "#00ff00" if active else "#ffcc00"
 
-            # --- 2. ЛОГИКА ЦЕЛЕЙ (На основе вашего старого кода) ---
-            # Ищем TargetInBar или TargetInActive
+            # --- ЦЕЛИ ---
             elif obj_type in ["TargetInBar", "TargetInActive"]:
                 self.is_locked = True
                 is_important = True
                 color = "#ffffff"
                 
-                # Пытаемся найти имя цели внутри текста меток
-                target_name = "Target"
-                if isinstance(children, list):
-                    for child in children:
-                        c_ei = child.get('dictEntriesOfInterest', {})
-                        # Ищем любое текстовое поле, которое не пустое
-                        text_val = c_ei.get('_text') or c_ei.get('_name')
-                        if text_val and text_val not in ["target", "TargetInBar"]:
-                            target_name = self.clean_html(text_val)
-                            break
+                t_name = self.find_target_name(node) or "Target"
                 
-                label_text = target_name
-                if target_name not in self.current_targets:
-                    self.current_targets.append(target_name)
+                # Рассчитываем центр контейнера для клика (в игровых координатах)
+                center_x = ax + (w / 2)
+                center_y = ay + (h / 2)
+                
+                self.current_targets[obj_addr] = {
+                    "name": t_name,
+                    "x": int(center_x),
+                    "y": int(center_y)
+                }
+                label_text = f"{t_name} ({int(center_x)},{int(center_y)})"
 
-            # Отрисовка
-            if is_important or w > 20: # Рисуем важные или крупные объекты
+            # Отрисовка на радаре
+            if is_important or (w > 15 and h > 15):
                 self.canvas.create_rectangle(x1, y1, x2, y2, outline=color, width=1)
                 if is_important:
                     self.canvas.create_text(x1, y1-2, text=label_text, fill=color, 
@@ -120,22 +134,23 @@ class EveRealTimeUI:
             self.canvas.delete("all")
             
             self.current_modules = {}
-            self.current_targets = []
+            self.current_targets = {} 
             self.is_locked = False
             
             self.draw_recursive(data, 0, 0)
             
             report = []
-            # Блок целей
             if self.is_locked:
-                report.append("!!! TARGET LOCKED !!!")
-                for t in self.current_targets:
-                    report.append(f" > {t}")
+                report.append(f"!!! TARGETS LOCKED: {len(self.current_targets)} !!!")
+                for addr, info in self.current_targets.items():
+                    # Выводим имя и координаты центра для каждой цели
+                    report.append(f" > {info['name'].ljust(15)} @ [X:{info['x']} Y:{info['y']}]")
                 report.append("")
+                # Диагностика в консоль (можно использовать для автокликера)
+                # print(f"Targets: {self.current_targets}")
             else:
-                report.append("[ No Targets ]\n")
+                report.append("[ No Targets Locked ]\n")
             
-            # Блок модулей
             if self.current_modules:
                 report.append("--- MODULES ---")
                 for m in sorted(self.current_modules.keys()):
@@ -144,7 +159,6 @@ class EveRealTimeUI:
                     report.append(f"{icon} {m.ljust(18)} : {status}")
             
             self.status_label.config(text="\n".join(report))
-            # Красим текст в красный если есть цель
             self.status_label.config(fg="#ff5555" if self.is_locked else "#00ccff")
 
         except Empty:
@@ -154,21 +168,30 @@ class EveRealTimeUI:
             self.root.after(30, self.update_gui)
 
     def reader_loop(self):
-        # Добавляем -remove-other-dict-entries для скорости
+        print(f"[Python] Connecting to {self.exe_path}...")
         process = subprocess.Popen(
             [self.exe_path, "-remove-other-dict-entries"], 
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding='utf-8', errors='replace', bufsize=10**7
         )
+
+        def log_reader(pipe):
+            for line in pipe:
+                sys.stderr.write(f"  [Go-Log]: {line}")
+                sys.stderr.flush()
+        
+        threading.Thread(target=log_reader, args=(process.stderr,), daemon=True).start()
+
         while self.running:
             line = process.stdout.readline()
             if not line: break
-            if line.strip().startswith("{"):
-                try:
-                    data = json.loads(line)
-                    if self.queue.full(): self.queue.get_nowait()
-                    self.queue.put(data)
-                except: continue
+            line_stripped = line.strip()
+            if not line_stripped.startswith("{"): continue
+            try:
+                data = json.loads(line_stripped)
+                if self.queue.full(): self.queue.get_nowait()
+                self.queue.put(data)
+            except: continue
 
     def start(self):
         threading.Thread(target=self.reader_loop, daemon=True).start()
