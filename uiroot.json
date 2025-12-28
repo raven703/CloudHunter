@@ -3,11 +3,11 @@
   "pythonObjectTypeName": "UIRoot",
   "dictEntriesOfInterest": {
     "_displayHeight": {
-      "int": 1795296330455,
+      "int": 1799591297751,
       "int_low32": 727
     },
     "_displayWidth": {
-      "int": 4607182418800018432,
+      "int": 4788773455686272000,
       "int_low32": 1024
     },
     "_displayX": 0,
@@ -1421,10 +1421,7 @@
                   "dictEntriesOfInterest": {
                     "_displayHeight": 10,
                     "_displayWidth": 10,
-                    "_displayX": {
-                      "int": 1799591297377,
-                      "int_low32": 353
-                    },
+                    "_displayX": 353,
                     "_displayY": 159,
                     "_height": 10,
                     "_left": 0,
@@ -1684,7 +1681,7 @@
                       "dictEntriesOfInterest": {
                         "_displayHeight": 8,
                         "_displayWidth": {
-                          "int": -4602841821771464343,
+                          "int": 4788743678678008169,
                           "int_low32": 361
                         },
                         "_displayX": 1,
@@ -1726,7 +1723,10 @@
                   "dictEntriesOfInterest": {
                     "_displayHeight": 169,
                     "_displayWidth": 10,
-                    "_displayX": 353,
+                    "_displayX": {
+                      "int": 1799591297377,
+                      "int_low32": 353
+                    },
                     "_displayY": 0,
                     "_height": 2,
                     "_left": 0,
@@ -1784,14 +1784,14 @@
                   "dictEntriesOfInterest": {
                     "_displayHeight": 10,
                     "_displayWidth": {
-                      "int": 1795296330091,
+                      "int": 1799591297387,
                       "int_low32": 363
                     },
                     "_displayX": 0,
                     "_displayY": 159,
                     "_height": 10,
                     "_left": 0,
-                    "_opacity": 3.023644126187719e-7,
+                    "_opacity": 4.075448032381246e-7,
                     "_sr": {
                       "entriesOfInterest": {}
                     },
@@ -1808,10 +1808,7 @@
                       "pythonObjectTypeName": "Container",
                       "dictEntriesOfInterest": {
                         "_displayHeight": 8,
-                        "_displayWidth": {
-                          "int": 1795296330089,
-                          "int_low32": 361
-                        },
+                        "_displayWidth": 361,
                         "_displayX": 1,
                         "_displayY": 1,
                         "_opacity": 1,
@@ -2043,7 +2040,7 @@
                           },
                           "children": [
                             {
-                              "pythonObjectAddress": 1799856643040,
+                              "pythonObjectAddress": 1800276995208,
                               "pythonObjectTypeName": "SelectedItemButton",
                               "dictEntriesOfInterest": {
                                 "_displayHeight": 32,
@@ -2057,14 +2054,14 @@
                                 "_top": 0,
                                 "_width": 32,
                                 "children": {
-                                  "address": 1799973563752,
+                                  "address": 1798548400336,
                                   "pythonObjectTypeName": "PyChildrenList"
                                 },
                                 "texturePath": "res:/UI/Texture/eveicon/control_icons/approach_32px.png"
                               },
                               "children": [
                                 {
-                                  "pythonObjectAddress": 1801444606640,
+                                  "pythonObjectAddress": 1801632735184,
                                   "pythonObjectTypeName": "Sprite",
                                   "dictEntriesOfInterest": {
                                     "_color": {
@@ -2086,7 +2083,7 @@
                                   }
                                 },
                                 {
-                                  "pythonObjectAddress": 1800685223776,
+                                  "pythonObjectAddress": 1799486085048,
                                   "pythonObjectTypeName": "Container",
                                   "dictEntriesOfInterest": {
                                     "_displayHeight": 32,
@@ -2096,7 +2093,7 @@
                                     "_name": "bgCont",
                                     "_opacity": 1,
                                     "children": {
-                                      "address": 1800804198104,
+                                      "address": 1801444607872,
                                       "pythonObjectTypeName": "PyChildrenList"
                                     }
                                   }
@@ -2104,7 +2101,7 @@
                               ]
                             },
                             {
-                              "pythonObjectAddress": 1799486214040,
+                              "pythonObjectAddress": 1801632694056,
                               "pythonObjectTypeName": "SelectedItemButton",
                               "dictEntriesOfInterest": {
                                 "_displayHeight": 32,
@@ -2118,14 +2115,14 @@
                                 "_top": 0,
                                 "_width": 32,
                                 "children": {
-                                  "address": 1799465991192,
+                                  "address": 1800110426544,
                                   "pythonObjectTypeName": "PyChildrenList"
                                 },
                                 "texturePath": "res:/UI/Texture/eveicon/control_icons/warp_to_32px.png"
                               },
                               "children": [
                                 {
-                                  "pythonObjectAddress": 1800277200456,
+                                  "pythonObjectAddress": 1800110425256,
                                   "pythonObjectTypeName": "Sprite",
                                   "dictEntriesOfInterest": {
                                     "_color": {
@@ -2147,7 +2144,7 @@
                                   }
                                 },
                                 {
-                                  "pythonObjectAddress": 1800276995544,
+                                  "pythonObjectAddress": 1800913744336,
                                   "pythonObjectTypeName": "Container",
                                   "dictEntriesOfInterest": {
                                     "_displayHeight": 32,
@@ -2157,7 +2154,7 @@
                                     "_name": "bgCont",
                                     "_opacity": 1,
                                     "children": {
-                                      "address": 1800276995432,
+                                      "address": 1800638092008,
                                       "pythonObjectTypeName": "PyChildrenList"
                                     }
                                   }
@@ -2165,7 +2162,7 @@
                               ]
                             },
                             {
-                              "pythonObjectAddress": 1800276995488,
+                              "pythonObjectAddress": 1800638091448,
                               "pythonObjectTypeName": "SelectedItemButton",
                               "dictEntriesOfInterest": {
                                 "_displayHeight": 32,
@@ -2174,19 +2171,80 @@
                                 "_displayY": 0,
                                 "_height": 32,
                                 "_left": 0,
-                                "_name": "selectedItemOpenCargo",
+                                "_name": "selectedItemDock",
                                 "_opacity": 1,
                                 "_top": 0,
                                 "_width": 32,
                                 "children": {
-                                  "address": 1800276995768,
+                                  "address": 1799486212584,
+                                  "pythonObjectTypeName": "PyChildrenList"
+                                },
+                                "texturePath": "res:/UI/Texture/eveicon/control_icons/dock_32px.png"
+                              },
+                              "children": [
+                                {
+                                  "pythonObjectAddress": 1799486213928,
+                                  "pythonObjectTypeName": "Sprite",
+                                  "dictEntriesOfInterest": {
+                                    "_color": {
+                                      "aPercent": 75,
+                                      "bPercent": 100,
+                                      "gPercent": 100,
+                                      "rPercent": 100
+                                    },
+                                    "_displayHeight": 32,
+                                    "_displayWidth": 32,
+                                    "_displayX": 0,
+                                    "_displayY": 0,
+                                    "_height": 32,
+                                    "_left": 0,
+                                    "_name": "icon",
+                                    "_texturePath": "res:/UI/Texture/eveicon/control_icons/dock_32px.png",
+                                    "_top": 0,
+                                    "_width": 32
+                                  }
+                                },
+                                {
+                                  "pythonObjectAddress": 1801632730192,
+                                  "pythonObjectTypeName": "Container",
+                                  "dictEntriesOfInterest": {
+                                    "_displayHeight": 32,
+                                    "_displayWidth": 32,
+                                    "_displayX": 0,
+                                    "_displayY": 0,
+                                    "_name": "bgCont",
+                                    "_opacity": 1,
+                                    "children": {
+                                      "address": 1801632729128,
+                                      "pythonObjectTypeName": "PyChildrenList"
+                                    }
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "pythonObjectAddress": 1801632741080,
+                              "pythonObjectTypeName": "SelectedItemButton",
+                              "dictEntriesOfInterest": {
+                                "_displayHeight": 32,
+                                "_displayWidth": 32,
+                                "_displayX": 108,
+                                "_displayY": 0,
+                                "_height": 32,
+                                "_left": 0,
+                                "_name": "selectedItemAccessDropbox",
+                                "_opacity": 1,
+                                "_top": 0,
+                                "_width": 32,
+                                "children": {
+                                  "address": 1798545419736,
                                   "pythonObjectTypeName": "PyChildrenList"
                                 },
                                 "texturePath": "res:/UI/Texture/eveicon/control_icons/open_cargo_32px.png"
                               },
                               "children": [
                                 {
-                                  "pythonObjectAddress": 1800276995152,
+                                  "pythonObjectAddress": 1798545419512,
                                   "pythonObjectTypeName": "Sprite",
                                   "dictEntriesOfInterest": {
                                     "_color": {
@@ -2208,7 +2266,7 @@
                                   }
                                 },
                                 {
-                                  "pythonObjectAddress": 1800276993024,
+                                  "pythonObjectAddress": 1798545419568,
                                   "pythonObjectTypeName": "Container",
                                   "dictEntriesOfInterest": {
                                     "_displayHeight": 32,
@@ -2218,7 +2276,7 @@
                                     "_name": "bgCont",
                                     "_opacity": 1,
                                     "children": {
-                                      "address": 1801632741976,
+                                      "address": 1798545416600,
                                       "pythonObjectTypeName": "PyChildrenList"
                                     }
                                   }
@@ -2226,12 +2284,12 @@
                               ]
                             },
                             {
-                              "pythonObjectAddress": 1800913744784,
+                              "pythonObjectAddress": 1798545419848,
                               "pythonObjectTypeName": "SelectedItemButton",
                               "dictEntriesOfInterest": {
                                 "_displayHeight": 32,
                                 "_displayWidth": 32,
-                                "_displayX": 108,
+                                "_displayX": 144,
                                 "_displayY": 0,
                                 "_height": 32,
                                 "_left": 0,
@@ -2240,14 +2298,14 @@
                                 "_top": 0,
                                 "_width": 32,
                                 "children": {
-                                  "address": 1800913744336,
+                                  "address": 1798545417832,
                                   "pythonObjectTypeName": "PyChildrenList"
                                 },
                                 "texturePath": "res:/UI/Texture/eveicon/control_icons/orbit_32px.png"
                               },
                               "children": [
                                 {
-                                  "pythonObjectAddress": 1800913746352,
+                                  "pythonObjectAddress": 1798545418448,
                                   "pythonObjectTypeName": "Sprite",
                                   "dictEntriesOfInterest": {
                                     "_color": {
@@ -2269,7 +2327,7 @@
                                   }
                                 },
                                 {
-                                  "pythonObjectAddress": 1800638949416,
+                                  "pythonObjectAddress": 1801632669648,
                                   "pythonObjectTypeName": "Container",
                                   "dictEntriesOfInterest": {
                                     "_displayHeight": 32,
@@ -2279,7 +2337,7 @@
                                     "_name": "bgCont",
                                     "_opacity": 1,
                                     "children": {
-                                      "address": 1800638951208,
+                                      "address": 1801632666624,
                                       "pythonObjectTypeName": "PyChildrenList"
                                     }
                                   }
@@ -2287,12 +2345,12 @@
                               ]
                             },
                             {
-                              "pythonObjectAddress": 1795440266992,
+                              "pythonObjectAddress": 1801632665784,
                               "pythonObjectTypeName": "SelectedItemButton",
                               "dictEntriesOfInterest": {
                                 "_displayHeight": 32,
                                 "_displayWidth": 32,
-                                "_displayX": 144,
+                                "_displayX": 180,
                                 "_displayY": 0,
                                 "_height": 32,
                                 "_left": 0,
@@ -2301,18 +2359,18 @@
                                 "_top": 0,
                                 "_width": 32,
                                 "children": {
-                                  "address": 1799856806936,
+                                  "address": 1801632669088,
                                   "pythonObjectTypeName": "PyChildrenList"
                                 },
                                 "texturePath": "res:/UI/Texture/eveicon/control_icons/keep_at_distance_32px.png"
                               },
                               "children": [
                                 {
-                                  "pythonObjectAddress": 1799856805480,
+                                  "pythonObjectAddress": 1801632669424,
                                   "pythonObjectTypeName": "Sprite",
                                   "dictEntriesOfInterest": {
                                     "_color": {
-                                      "aPercent": 30,
+                                      "aPercent": 75,
                                       "bPercent": 100,
                                       "gPercent": 100,
                                       "rPercent": 100
@@ -2330,7 +2388,7 @@
                                   }
                                 },
                                 {
-                                  "pythonObjectAddress": 1799856805760,
+                                  "pythonObjectAddress": 1801632666736,
                                   "pythonObjectTypeName": "Container",
                                   "dictEntriesOfInterest": {
                                     "_displayHeight": 32,
@@ -2340,7 +2398,7 @@
                                     "_name": "bgCont",
                                     "_opacity": 1,
                                     "children": {
-                                      "address": 1799856806264,
+                                      "address": 1801632668696,
                                       "pythonObjectTypeName": "PyChildrenList"
                                     }
                                   }
@@ -2348,28 +2406,39 @@
                               ]
                             },
                             {
-                              "pythonObjectAddress": 1800638900488,
+                              "pythonObjectAddress": 1801632668248,
                               "pythonObjectTypeName": "SelectedItemButton",
                               "dictEntriesOfInterest": {
                                 "_displayHeight": 32,
                                 "_displayWidth": 32,
-                                "_displayX": 180,
+                                "_displayX": 216,
                                 "_displayY": 0,
                                 "_height": 32,
                                 "_left": 0,
-                                "_name": "selectedItemLockTarget",
+                                "_name": "selectedItemUnLockTarget",
                                 "_opacity": 1,
                                 "_top": 0,
                                 "_width": 32,
                                 "children": {
-                                  "address": 1800638898976,
+                                  "address": 1801632666176,
                                   "pythonObjectTypeName": "PyChildrenList"
                                 },
                                 "texturePath": "res:/UI/Texture/eveicon/control_icons/target_32px.png"
                               },
                               "children": [
                                 {
-                                  "pythonObjectAddress": 1800638898920,
+                                  "pythonObjectAddress": 1799856788816,
+                                  "pythonObjectTypeName": "Sprite",
+                                  "dictEntriesOfInterest": {
+                                    "_displayHeight": 32,
+                                    "_displayWidth": 32,
+                                    "_displayX": 0,
+                                    "_displayY": 0,
+                                    "_texturePath": "res:/UI/Texture/icons/44_32_8.png"
+                                  }
+                                },
+                                {
+                                  "pythonObjectAddress": 1801632667744,
                                   "pythonObjectTypeName": "Sprite",
                                   "dictEntriesOfInterest": {
                                     "_color": {
@@ -2391,7 +2460,7 @@
                                   }
                                 },
                                 {
-                                  "pythonObjectAddress": 1800638900040,
+                                  "pythonObjectAddress": 1801632667912,
                                   "pythonObjectTypeName": "Container",
                                   "dictEntriesOfInterest": {
                                     "_displayHeight": 32,
@@ -2401,7 +2470,7 @@
                                     "_name": "bgCont",
                                     "_opacity": 1,
                                     "children": {
-                                      "address": 1800638902168,
+                                      "address": 1801632666400,
                                       "pythonObjectTypeName": "PyChildrenList"
                                     }
                                   }
@@ -2409,12 +2478,12 @@
                               ]
                             },
                             {
-                              "pythonObjectAddress": 1801632669088,
+                              "pythonObjectAddress": 1799856790720,
                               "pythonObjectTypeName": "SelectedItemButton",
                               "dictEntriesOfInterest": {
                                 "_displayHeight": 32,
                                 "_displayWidth": 32,
-                                "_displayX": 216,
+                                "_displayX": 252,
                                 "_displayY": 0,
                                 "_height": 32,
                                 "_left": 0,
@@ -2423,14 +2492,14 @@
                                 "_top": 0,
                                 "_width": 32,
                                 "children": {
-                                  "address": 1801632669648,
+                                  "address": 1799856787584,
                                   "pythonObjectTypeName": "PyChildrenList"
                                 },
                                 "texturePath": "res:/UI/Texture/eveicon/control_icons/look_at_32px.png"
                               },
                               "children": [
                                 {
-                                  "pythonObjectAddress": 1801632669424,
+                                  "pythonObjectAddress": 1799856788144,
                                   "pythonObjectTypeName": "Sprite",
                                   "dictEntriesOfInterest": {
                                     "_color": {
@@ -2452,7 +2521,7 @@
                                   }
                                 },
                                 {
-                                  "pythonObjectAddress": 1801632666456,
+                                  "pythonObjectAddress": 1801632776032,
                                   "pythonObjectTypeName": "Container",
                                   "dictEntriesOfInterest": {
                                     "_displayHeight": 32,
@@ -2462,7 +2531,7 @@
                                     "_name": "bgCont",
                                     "_opacity": 1,
                                     "children": {
-                                      "address": 1801632669144,
+                                      "address": 1801632772280,
                                       "pythonObjectTypeName": "PyChildrenList"
                                     }
                                   }
@@ -2470,12 +2539,15 @@
                               ]
                             },
                             {
-                              "pythonObjectAddress": 1801632668472,
+                              "pythonObjectAddress": 1801632774352,
                               "pythonObjectTypeName": "SelectedItemButton",
                               "dictEntriesOfInterest": {
                                 "_displayHeight": 32,
                                 "_displayWidth": 32,
-                                "_displayX": 252,
+                                "_displayX": {
+                                  "int": 1799591297312,
+                                  "int_low32": 288
+                                },
                                 "_displayY": 0,
                                 "_height": 32,
                                 "_left": 0,
@@ -2484,14 +2556,14 @@
                                 "_top": 0,
                                 "_width": 32,
                                 "children": {
-                                  "address": 1799856790720,
+                                  "address": 1801632772840,
                                   "pythonObjectTypeName": "PyChildrenList"
                                 },
                                 "texturePath": "res:/UI/Texture/eveicon/control_icons/camera_track_32px.png"
                               },
                               "children": [
                                 {
-                                  "pythonObjectAddress": 1799856787584,
+                                  "pythonObjectAddress": 1801632775080,
                                   "pythonObjectTypeName": "Sprite",
                                   "dictEntriesOfInterest": {
                                     "_color": {
@@ -2513,7 +2585,7 @@
                                   }
                                 },
                                 {
-                                  "pythonObjectAddress": 1799856788816,
+                                  "pythonObjectAddress": 1795445469536,
                                   "pythonObjectTypeName": "Container",
                                   "dictEntriesOfInterest": {
                                     "_displayHeight": 32,
@@ -2523,7 +2595,7 @@
                                     "_name": "bgCont",
                                     "_opacity": 1,
                                     "children": {
-                                      "address": 1799856653648,
+                                      "address": 1795445470040,
                                       "pythonObjectTypeName": "PyChildrenList"
                                     }
                                   }
@@ -2531,14 +2603,14 @@
                               ]
                             },
                             {
-                              "pythonObjectAddress": 1800638091504,
+                              "pythonObjectAddress": 1801632709152,
                               "pythonObjectTypeName": "SelectedItemButton",
                               "dictEntriesOfInterest": {
                                 "_displayHeight": 32,
                                 "_displayWidth": 32,
                                 "_displayX": {
-                                  "int": 4587421682293014816,
-                                  "int_low32": 288
+                                  "int": 1799591297348,
+                                  "int_low32": 324
                                 },
                                 "_displayY": 0,
                                 "_height": 32,
@@ -2548,14 +2620,14 @@
                                 "_top": 0,
                                 "_width": 32,
                                 "children": {
-                                  "address": 1800638091728,
+                                  "address": 1801632707584,
                                   "pythonObjectTypeName": "PyChildrenList"
                                 },
                                 "texturePath": "res:/UI/Texture/eveicon/control_icons/show_info_32px.png"
                               },
                               "children": [
                                 {
-                                  "pythonObjectAddress": 1800638092008,
+                                  "pythonObjectAddress": 1801632710328,
                                   "pythonObjectTypeName": "Sprite",
                                   "dictEntriesOfInterest": {
                                     "_color": {
@@ -2577,7 +2649,7 @@
                                   }
                                 },
                                 {
-                                  "pythonObjectAddress": 1800638091448,
+                                  "pythonObjectAddress": 1801632545816,
                                   "pythonObjectTypeName": "Container",
                                   "dictEntriesOfInterest": {
                                     "_displayHeight": 32,
@@ -2587,7 +2659,7 @@
                                     "_name": "bgCont",
                                     "_opacity": 1,
                                     "children": {
-                                      "address": 1797745308112,
+                                      "address": 1800638902168,
                                       "pythonObjectTypeName": "PyChildrenList"
                                     }
                                   }
@@ -2643,7 +2715,7 @@
                                 "_displayY": 0,
                                 "_height": 64,
                                 "_name": "iconSprite",
-                                "_texturePath": "res:/ui/texture/icons/26_64_11.png",
+                                "_texturePath": "res:/dx9/model/deployables/generic/citadel/m/cm1/icons/21137_64.png",
                                 "_width": 64
                               }
                             }
@@ -2654,10 +2726,7 @@
                           "pythonObjectTypeName": "ScrollContainer",
                           "dictEntriesOfInterest": {
                             "_displayHeight": 85,
-                            "_displayWidth": {
-                              "int": 1795296329999,
-                              "int_low32": 271
-                            },
+                            "_displayWidth": 271,
                             "_displayX": 72,
                             "_displayY": 0,
                             "_name": "labelCont",
@@ -2691,14 +2760,14 @@
                                   "pythonObjectAddress": 1798984204016,
                                   "pythonObjectTypeName": "ContainerAutoSize",
                                   "dictEntriesOfInterest": {
-                                    "_displayHeight": 54,
+                                    "_displayHeight": 36,
                                     "_displayWidth": {
-                                      "int": 4788741612798738703,
+                                      "int": 1795296329999,
                                       "int_low32": 271
                                     },
                                     "_displayX": 0,
                                     "_displayY": 0,
-                                    "_height": 54,
+                                    "_height": 36,
                                     "_name": "mainCont",
                                     "_opacity": 1,
                                     "children": {
@@ -2717,15 +2786,15 @@
                                           "gPercent": 100,
                                           "rPercent": 100
                                         },
-                                        "_displayHeight": 54,
+                                        "_displayHeight": 36,
                                         "_displayWidth": {
-                                          "int": 1799591297295,
+                                          "int": 4788746603550736655,
                                           "int_low32": 271
                                         },
                                         "_displayX": 0,
                                         "_displayY": 0,
-                                        "_height": 54,
-                                        "_setText": "Cargo Container\u003cbr\u003e12 km\u003cbr\u003eSec. 5,0"
+                                        "_height": 36,
+                                        "_setText": "RBW-8G - Anime Studio\u003cbr\u003e0 m"
                                       }
                                     }
                                   ]
@@ -3134,7 +3203,7 @@
                     "_displayY": 265,
                     "_height": 10,
                     "_left": 0,
-                    "_opacity": 0,
+                    "_opacity": 4.075448032381246e-7,
                     "_top": 0,
                     "_width": 10,
                     "children": {
@@ -3440,7 +3509,7 @@
                     "_displayY": 0,
                     "_height": 10,
                     "_left": 0,
-                    "_opacity": 4.096872494030457e-11,
+                    "_opacity": 1.712994598045427e-20,
                     "_sr": {
                       "entriesOfInterest": {}
                     },
@@ -3574,7 +3643,7 @@
                     },
                     "_height": 10,
                     "_left": 0,
-                    "_opacity": 1.7538000565697764e-11,
+                    "_opacity": 5.150351013253067e-16,
                     "_top": 0,
                     "_width": 2,
                     "children": {
@@ -5198,7 +5267,7 @@
                               "dictEntriesOfInterest": {
                                 "_displayHeight": 175,
                                 "_displayWidth": {
-                                  "int": 1799591297383,
+                                  "int": 4606758548477575527,
                                   "int_low32": 359
                                 },
                                 "_displayX": 0,
@@ -5370,6 +5439,40 @@
                                           },
                                           "children": [
                                             {
+                                              "pythonObjectAddress": 1800110318816,
+                                              "pythonObjectTypeName": "Sprite",
+                                              "dictEntriesOfInterest": {
+                                                "_color": {
+                                                  "aPercent": 50,
+                                                  "bPercent": 100,
+                                                  "gPercent": 100,
+                                                  "rPercent": 100
+                                                },
+                                                "_displayHeight": 18,
+                                                "_displayWidth": 18,
+                                                "_displayX": {
+                                                  "int": 4294967295,
+                                                  "int_low32": -1
+                                                },
+                                                "_displayY": {
+                                                  "int": 4294967295,
+                                                  "int_low32": -1
+                                                },
+                                                "_height": 18,
+                                                "_left": {
+                                                  "int": 4294967295,
+                                                  "int_low32": -1
+                                                },
+                                                "_name": "targetedByMeIndicator",
+                                                "_texturePath": "res:/UI/Texture/classes/Bracket/activeTarget.png",
+                                                "_top": {
+                                                  "int": 4294967295,
+                                                  "int_low32": -1
+                                                },
+                                                "_width": 18
+                                              }
+                                            },
+                                            {
                                               "pythonObjectAddress": 1795394955640,
                                               "pythonObjectTypeName": "Sprite",
                                               "dictEntriesOfInterest": {
@@ -5479,6 +5582,9 @@
                                             "_height": 18,
                                             "_hint": "Sovereignty Hub \u0026lt;MMMMM\u0026gt;(Sovereignty Hub)",
                                             "_left": 110,
+                                            "_sr": {
+                                              "entriesOfInterest": {}
+                                            },
                                             "_text": "Sovereignty Hub",
                                             "_width": 90
                                           }
@@ -5634,6 +5740,9 @@
                                             "_height": 18,
                                             "_hint": "WAC-HW",
                                             "_left": 110,
+                                            "_sr": {
+                                              "entriesOfInterest": {}
+                                            },
                                             "_text": "WAC-HW",
                                             "_width": 50
                                           }
@@ -7543,7 +7652,7 @@
                                       "pythonObjectTypeName": "EveLabelMedium",
                                       "dictEntriesOfInterest": {
                                         "_color": {
-                                          "aPercent": 74,
+                                          "aPercent": 75,
                                           "bPercent": 100,
                                           "gPercent": 100,
                                           "rPercent": 100
@@ -7632,7 +7741,7 @@
                                           "pythonObjectTypeName": "Frame",
                                           "dictEntriesOfInterest": {
                                             "_color": {
-                                              "aPercent": 99,
+                                              "aPercent": 100,
                                               "bPercent": 46,
                                               "gPercent": 57,
                                               "rPercent": 27
@@ -10350,7 +10459,7 @@
                                                 "_displayX": 0,
                                                 "_displayY": 7,
                                                 "_height": 18,
-                                                "_setText": "Local [8]",
+                                                "_setText": "Local [9]",
                                                 "_width": 53
                                               }
                                             }
@@ -11189,7 +11298,7 @@
                                                   "int_low32": -8
                                                 },
                                                 "_height": 16,
-                                                "_setText": "Local [8]",
+                                                "_setText": "Local [9]",
                                                 "_width": 47
                                               }
                                             }
@@ -11617,7 +11726,7 @@
                                             "_hint": "Capsuleers in Channel",
                                             "_left": 20,
                                             "_name": "numMembersLabel",
-                                            "_setText": 8,
+                                            "_setText": 9,
                                             "_top": 0,
                                             "_width": 7
                                           }
@@ -11660,11 +11769,85 @@
                                           },
                                           "children": [
                                             {
+                                              "pythonObjectAddress": 1799167633952,
+                                              "pythonObjectTypeName": "Scrollbar",
+                                              "dictEntriesOfInterest": {
+                                                "_display": true,
+                                                "_displayHeight": 137,
+                                                "_displayWidth": 8,
+                                                "_displayX": 104,
+                                                "_displayY": 0,
+                                                "_opacity": 1,
+                                                "_width": 8,
+                                                "children": {
+                                                  "address": 1799167634008,
+                                                  "pythonObjectTypeName": "PyChildrenList"
+                                                }
+                                              },
+                                              "children": [
+                                                {
+                                                  "pythonObjectAddress": 1799167634120,
+                                                  "pythonObjectTypeName": "ScrollHandle",
+                                                  "dictEntriesOfInterest": {
+                                                    "_color": {
+                                                      "address": 1801046112632,
+                                                      "pythonObjectTypeName": "Color"
+                                                    },
+                                                    "_displayHeight": 123,
+                                                    "_displayWidth": 8,
+                                                    "_displayX": 0,
+                                                    "_displayY": 0,
+                                                    "_height": 0.9013157894736842,
+                                                    "_opacity": 0.30000001192092896,
+                                                    "_top": 0,
+                                                    "children": {
+                                                      "address": 1799167634232,
+                                                      "pythonObjectTypeName": "PyChildrenList"
+                                                    }
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "pythonObjectAddress": 1799167634344,
+                                                      "pythonObjectTypeName": "Fill",
+                                                      "dictEntriesOfInterest": {
+                                                        "_color": {
+                                                          "aPercent": 100,
+                                                          "bPercent": 100,
+                                                          "gPercent": 100,
+                                                          "rPercent": 100
+                                                        },
+                                                        "_displayHeight": 117,
+                                                        "_displayWidth": 2,
+                                                        "_displayX": 3,
+                                                        "_displayY": 3
+                                                      }
+                                                    },
+                                                    {
+                                                      "pythonObjectAddress": 1799167634512,
+                                                      "pythonObjectTypeName": "Fill",
+                                                      "dictEntriesOfInterest": {
+                                                        "_color": {
+                                                          "aPercent": 0,
+                                                          "bPercent": 100,
+                                                          "gPercent": 100,
+                                                          "rPercent": 100
+                                                        },
+                                                        "_displayHeight": 119,
+                                                        "_displayWidth": 4,
+                                                        "_displayX": 2,
+                                                        "_displayY": 2
+                                                      }
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            },
+                                            {
                                               "pythonObjectAddress": 1799167633616,
                                               "pythonObjectTypeName": "Container",
                                               "dictEntriesOfInterest": {
                                                 "_displayHeight": 137,
-                                                "_displayWidth": 112,
+                                                "_displayWidth": 96,
                                                 "_displayX": 0,
                                                 "_displayY": 0,
                                                 "_name": "__clipper",
@@ -11679,15 +11862,15 @@
                                                   "pythonObjectAddress": 1799167633784,
                                                   "pythonObjectTypeName": "Container",
                                                   "dictEntriesOfInterest": {
-                                                    "_displayHeight": 137,
-                                                    "_displayWidth": 112,
+                                                    "_displayHeight": 152,
+                                                    "_displayWidth": 96,
                                                     "_displayX": 0,
                                                     "_displayY": 0,
-                                                    "_height": 137,
+                                                    "_height": 152,
                                                     "_name": "__content",
                                                     "_opacity": 1,
                                                     "_top": 0,
-                                                    "_width": 112,
+                                                    "_width": 96,
                                                     "children": {
                                                       "address": 1799167633840,
                                                       "pythonObjectTypeName": "PyChildrenList"
@@ -11699,7 +11882,7 @@
                                                       "pythonObjectTypeName": "XmppChatSimpleUserEntry",
                                                       "dictEntriesOfInterest": {
                                                         "_displayHeight": 16,
-                                                        "_displayWidth": 112,
+                                                        "_displayWidth": 96,
                                                         "_displayX": 0,
                                                         "_displayY": 0,
                                                         "_height": 16,
@@ -11710,7 +11893,7 @@
                                                           "entriesOfInterest": {}
                                                         },
                                                         "_top": 0,
-                                                        "_width": 112,
+                                                        "_width": 96,
                                                         "children": {
                                                           "address": 1795385242904,
                                                           "pythonObjectTypeName": "PyChildrenList"
@@ -11768,9 +11951,9 @@
                                                       "pythonObjectTypeName": "XmppChatSimpleUserEntry",
                                                       "dictEntriesOfInterest": {
                                                         "_displayHeight": 16,
-                                                        "_displayWidth": 112,
+                                                        "_displayWidth": 96,
                                                         "_displayX": 0,
-                                                        "_displayY": 17,
+                                                        "_displayY": 34,
                                                         "_height": 16,
                                                         "_left": 0,
                                                         "_name": "BlackDeath75",
@@ -11778,8 +11961,8 @@
                                                         "_sr": {
                                                           "entriesOfInterest": {}
                                                         },
-                                                        "_top": 17,
-                                                        "_width": 112,
+                                                        "_top": 34,
+                                                        "_width": 96,
                                                         "children": {
                                                           "address": 1795436907320,
                                                           "pythonObjectTypeName": "PyChildrenList"
@@ -11886,9 +12069,9 @@
                                                       "pythonObjectTypeName": "XmppChatSimpleUserEntry",
                                                       "dictEntriesOfInterest": {
                                                         "_displayHeight": 16,
-                                                        "_displayWidth": 112,
+                                                        "_displayWidth": 96,
                                                         "_displayX": 0,
-                                                        "_displayY": 68,
+                                                        "_displayY": 85,
                                                         "_height": 16,
                                                         "_left": 0,
                                                         "_name": "KoMaHgep 6opoBcKuu",
@@ -11896,8 +12079,8 @@
                                                         "_sr": {
                                                           "entriesOfInterest": {}
                                                         },
-                                                        "_top": 68,
-                                                        "_width": 112,
+                                                        "_top": 85,
+                                                        "_width": 96,
                                                         "children": {
                                                           "address": 1795436908328,
                                                           "pythonObjectTypeName": "PyChildrenList"
@@ -12004,9 +12187,9 @@
                                                       "pythonObjectTypeName": "XmppChatSimpleUserEntry",
                                                       "dictEntriesOfInterest": {
                                                         "_displayHeight": 16,
-                                                        "_displayWidth": 112,
+                                                        "_displayWidth": 96,
                                                         "_displayX": 0,
-                                                        "_displayY": 51,
+                                                        "_displayY": 68,
                                                         "_height": 16,
                                                         "_left": 0,
                                                         "_name": "JIeu PoH",
@@ -12014,8 +12197,8 @@
                                                         "_sr": {
                                                           "entriesOfInterest": {}
                                                         },
-                                                        "_top": 51,
-                                                        "_width": 112,
+                                                        "_top": 68,
+                                                        "_width": 96,
                                                         "children": {
                                                           "address": 1801344549720,
                                                           "pythonObjectTypeName": "PyChildrenList"
@@ -12122,9 +12305,9 @@
                                                       "pythonObjectTypeName": "XmppChatSimpleUserEntry",
                                                       "dictEntriesOfInterest": {
                                                         "_displayHeight": 16,
-                                                        "_displayWidth": 112,
+                                                        "_displayWidth": 96,
                                                         "_displayX": 0,
-                                                        "_displayY": 34,
+                                                        "_displayY": 51,
                                                         "_height": 16,
                                                         "_left": 0,
                                                         "_name": "Feson",
@@ -12132,8 +12315,8 @@
                                                         "_sr": {
                                                           "entriesOfInterest": {}
                                                         },
-                                                        "_top": 34,
-                                                        "_width": 112,
+                                                        "_top": 51,
+                                                        "_width": 96,
                                                         "children": {
                                                           "address": 1800804257520,
                                                           "pythonObjectTypeName": "PyChildrenList"
@@ -12240,9 +12423,9 @@
                                                       "pythonObjectTypeName": "XmppChatSimpleUserEntry",
                                                       "dictEntriesOfInterest": {
                                                         "_displayHeight": 16,
-                                                        "_displayWidth": 112,
+                                                        "_displayWidth": 96,
                                                         "_displayX": 0,
-                                                        "_displayY": 85,
+                                                        "_displayY": 102,
                                                         "_height": 16,
                                                         "_left": 0,
                                                         "_name": "PoBaH Heu",
@@ -12250,8 +12433,8 @@
                                                         "_sr": {
                                                           "entriesOfInterest": {}
                                                         },
-                                                        "_top": 85,
-                                                        "_width": 112,
+                                                        "_top": 102,
+                                                        "_width": 96,
                                                         "children": {
                                                           "address": 1799486084152,
                                                           "pythonObjectTypeName": "PyChildrenList"
@@ -12358,9 +12541,9 @@
                                                       "pythonObjectTypeName": "XmppChatSimpleUserEntry",
                                                       "dictEntriesOfInterest": {
                                                         "_displayHeight": 16,
-                                                        "_displayWidth": 112,
+                                                        "_displayWidth": 96,
                                                         "_displayX": 0,
-                                                        "_displayY": 102,
+                                                        "_displayY": 119,
                                                         "_height": 16,
                                                         "_left": 0,
                                                         "_name": "ruHoPa PeuJIu",
@@ -12368,8 +12551,8 @@
                                                         "_sr": {
                                                           "entriesOfInterest": {}
                                                         },
-                                                        "_top": 102,
-                                                        "_width": 112,
+                                                        "_top": 119,
+                                                        "_width": 96,
                                                         "children": {
                                                           "address": 1800913746800,
                                                           "pythonObjectTypeName": "PyChildrenList"
@@ -12476,9 +12659,9 @@
                                                       "pythonObjectTypeName": "XmppChatSimpleUserEntry",
                                                       "dictEntriesOfInterest": {
                                                         "_displayHeight": 16,
-                                                        "_displayWidth": 112,
+                                                        "_displayWidth": 96,
                                                         "_displayX": 0,
-                                                        "_displayY": 119,
+                                                        "_displayY": 136,
                                                         "_height": 16,
                                                         "_left": 0,
                                                         "_name": "Zview Mernher",
@@ -12486,8 +12669,8 @@
                                                         "_sr": {
                                                           "entriesOfInterest": {}
                                                         },
-                                                        "_top": 119,
-                                                        "_width": 112,
+                                                        "_top": 136,
+                                                        "_width": 96,
                                                         "children": {
                                                           "address": 1800638949920,
                                                           "pythonObjectTypeName": "PyChildrenList"
@@ -12579,6 +12762,124 @@
                                                                     "_left": 0,
                                                                     "_name": "flagIcon",
                                                                     "_texturePath": "res:/UI/Texture/classes/FlagIcon/8/2.png",
+                                                                    "_top": 0,
+                                                                    "_width": 8
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "pythonObjectAddress": 1795445470768,
+                                                      "pythonObjectTypeName": "XmppChatSimpleUserEntry",
+                                                      "dictEntriesOfInterest": {
+                                                        "_displayHeight": 16,
+                                                        "_displayWidth": 96,
+                                                        "_displayX": 0,
+                                                        "_displayY": 17,
+                                                        "_height": 16,
+                                                        "_left": 0,
+                                                        "_name": "Azorane Azores",
+                                                        "_opacity": 1,
+                                                        "_sr": {
+                                                          "entriesOfInterest": {}
+                                                        },
+                                                        "_top": 17,
+                                                        "_width": 96,
+                                                        "children": {
+                                                          "address": 1800854324112,
+                                                          "pythonObjectTypeName": "PyChildrenList"
+                                                        }
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "pythonObjectAddress": 1798044109960,
+                                                          "pythonObjectTypeName": "EveLabelMedium",
+                                                          "dictEntriesOfInterest": {
+                                                            "_color": {
+                                                              "aPercent": 75,
+                                                              "bPercent": 100,
+                                                              "gPercent": 100,
+                                                              "rPercent": 100
+                                                            },
+                                                            "_displayHeight": 18,
+                                                            "_displayWidth": 94,
+                                                            "_displayX": 16,
+                                                            "_displayY": {
+                                                              "int": 4294967295,
+                                                              "int_low32": -1
+                                                            },
+                                                            "_height": 18,
+                                                            "_left": 16,
+                                                            "_name": "nameLabel",
+                                                            "_setText": "Azorane Azores",
+                                                            "_width": 94
+                                                          }
+                                                        },
+                                                        {
+                                                          "pythonObjectAddress": 1795385184096,
+                                                          "pythonObjectTypeName": "Container",
+                                                          "dictEntriesOfInterest": {
+                                                            "_displayHeight": 16,
+                                                            "_displayWidth": 12,
+                                                            "_displayX": 0,
+                                                            "_displayY": 0,
+                                                            "_height": 0,
+                                                            "_left": 0,
+                                                            "_name": "iconCont",
+                                                            "_opacity": 1,
+                                                            "_top": 0,
+                                                            "_width": 12,
+                                                            "children": {
+                                                              "address": 1800110319432,
+                                                              "pythonObjectTypeName": "PyChildrenList"
+                                                            }
+                                                          },
+                                                          "children": [
+                                                            {
+                                                              "pythonObjectAddress": 1801632668024,
+                                                              "pythonObjectTypeName": "FlagIconWithState",
+                                                              "dictEntriesOfInterest": {
+                                                                "_displayHeight": 12,
+                                                                "_displayWidth": 12,
+                                                                "_displayX": 0,
+                                                                "_displayY": 1,
+                                                                "_height": 12,
+                                                                "_hint": "Pilot has No Standing.",
+                                                                "_left": 0,
+                                                                "_opacity": 1,
+                                                                "_top": {
+                                                                  "int": 4294967295,
+                                                                  "int_low32": -1
+                                                                },
+                                                                "_width": 12,
+                                                                "children": {
+                                                                  "address": 1801632709936,
+                                                                  "pythonObjectTypeName": "PyChildrenList"
+                                                                }
+                                                              },
+                                                              "children": [
+                                                                {
+                                                                  "pythonObjectAddress": 1801632709096,
+                                                                  "pythonObjectTypeName": "Sprite",
+                                                                  "dictEntriesOfInterest": {
+                                                                    "_color": {
+                                                                      "aPercent": 100,
+                                                                      "bPercent": 100,
+                                                                      "gPercent": 100,
+                                                                      "rPercent": 100
+                                                                    },
+                                                                    "_displayHeight": 8,
+                                                                    "_displayWidth": 8,
+                                                                    "_displayX": 2,
+                                                                    "_displayY": 2,
+                                                                    "_height": 8,
+                                                                    "_left": 0,
+                                                                    "_name": "flagIcon",
+                                                                    "_texturePath": "res:/UI/Texture/classes/FlagIcon/8/5.png",
                                                                     "_top": 0,
                                                                     "_width": 8
                                                                   }
@@ -13111,7 +13412,7 @@
                   "pythonObjectTypeName": "Container",
                   "dictEntriesOfInterest": {
                     "_displayHeight": {
-                      "int": 1799591297585,
+                      "int": 1795296330289,
                       "int_low32": 561
                     },
                     "_displayWidth": {
@@ -13119,7 +13420,7 @@
                       "int_low32": 664
                     },
                     "_displayX": {
-                      "int": 1799591297339,
+                      "int": 4788741350805733691,
                       "int_low32": 315
                     },
                     "_displayY": 0,
@@ -13134,17 +13435,17 @@
                       "pythonObjectAddress": 1798989946832,
                       "pythonObjectTypeName": "Container",
                       "dictEntriesOfInterest": {
-                        "_displayHeight": 180,
+                        "_displayHeight": 190,
                         "_displayWidth": {
-                          "int": 1799591297688,
+                          "int": 1795296330392,
                           "int_low32": 664
                         },
                         "_displayX": 0,
                         "_displayY": {
-                          "int": 4629137466983448957,
-                          "int_low32": 381
+                          "int": 4788713729871053171,
+                          "int_low32": 371
                         },
-                        "_height": 180,
+                        "_height": 190,
                         "_left": 0,
                         "_name": "aRowx_0",
                         "_opacity": 1,
@@ -13154,7 +13455,977 @@
                           "address": 1798339814624,
                           "pythonObjectTypeName": "PyChildrenList"
                         }
-                      }
+                      },
+                      "children": [
+                        {
+                          "pythonObjectAddress": 1800638901608,
+                          "pythonObjectTypeName": "TargetInBar",
+                          "dictEntriesOfInterest": {
+                            "_displayHeight": 190,
+                            "_displayWidth": 110,
+                            "_displayX": 0,
+                            "_displayY": 0,
+                            "_height": 180,
+                            "_left": 0,
+                            "_name": "target",
+                            "_opacity": 1,
+                            "_sr": {
+                              "entriesOfInterest": {}
+                            },
+                            "_top": 0,
+                            "_width": 110,
+                            "children": {
+                              "address": 1800638898920,
+                              "pythonObjectTypeName": "UIChildrenListAutoSize"
+                            }
+                          },
+                          "children": [
+                            {
+                              "pythonObjectAddress": 1800638951320,
+                              "pythonObjectTypeName": "Container",
+                              "dictEntriesOfInterest": {
+                                "_displayHeight": 100,
+                                "_displayWidth": 110,
+                                "_displayX": 0,
+                                "_displayY": 0,
+                                "_height": 100,
+                                "_hint": "",
+                                "_left": 0,
+                                "_name": "barAndImageCont",
+                                "_opacity": 1,
+                                "_top": 0,
+                                "_width": 0,
+                                "children": {
+                                  "address": 1800638949416,
+                                  "pythonObjectTypeName": "PyChildrenList"
+                                }
+                              },
+                              "children": [
+                                {
+                                  "pythonObjectAddress": 1800638950872,
+                                  "pythonObjectTypeName": "Transform",
+                                  "dictEntriesOfInterest": {
+                                    "_displayHeight": 94,
+                                    "_displayWidth": 94,
+                                    "_displayX": 8,
+                                    "_displayY": 0,
+                                    "_height": 94,
+                                    "_left": 0,
+                                    "_name": "iconPar",
+                                    "_opacity": 1,
+                                    "_rotation": 0,
+                                    "_top": 0,
+                                    "_width": 94,
+                                    "children": {
+                                      "address": 1795440266432,
+                                      "pythonObjectTypeName": "PyChildrenList"
+                                    }
+                                  },
+                                  "children": [
+                                    {
+                                      "pythonObjectAddress": 1801632733448,
+                                      "pythonObjectTypeName": "Icon",
+                                      "dictEntriesOfInterest": {
+                                        "_displayHeight": 50,
+                                        "_displayWidth": 50,
+                                        "_displayX": 22,
+                                        "_displayY": 22,
+                                        "_height": 50,
+                                        "_left": 22,
+                                        "_texturePath": "res:/ui/texture/icons/26_64_11.png",
+                                        "_top": 22,
+                                        "_width": 50
+                                      }
+                                    },
+                                    {
+                                      "pythonObjectAddress": 1801632732944,
+                                      "pythonObjectTypeName": "TargetHealthBars",
+                                      "dictEntriesOfInterest": {
+                                        "_displayHeight": 94,
+                                        "_displayWidth": 94,
+                                        "_displayX": 0,
+                                        "_displayY": 0,
+                                        "_height": 94,
+                                        "_left": 0,
+                                        "_opacity": 1,
+                                        "_sr": {
+                                          "entriesOfInterest": {}
+                                        },
+                                        "_top": 0,
+                                        "_width": 94,
+                                        "children": {
+                                          "address": 1801632732384,
+                                          "pythonObjectTypeName": "PyChildrenList"
+                                        }
+                                      },
+                                      "children": [
+                                        {
+                                          "pythonObjectAddress": 1799856807496,
+                                          "pythonObjectTypeName": "Container",
+                                          "dictEntriesOfInterest": {
+                                            "_displayHeight": 94,
+                                            "_displayWidth": 94,
+                                            "_displayX": 0,
+                                            "_displayY": 0,
+                                            "_height": 94,
+                                            "_left": 0,
+                                            "_name": "armorBar",
+                                            "_opacity": 1,
+                                            "_top": 0,
+                                            "_width": 94,
+                                            "children": {
+                                              "address": 1799856805760,
+                                              "pythonObjectTypeName": "PyChildrenList"
+                                            }
+                                          },
+                                          "children": [
+                                            {
+                                              "pythonObjectAddress": 1799856805144,
+                                              "pythonObjectTypeName": "Sprite",
+                                              "dictEntriesOfInterest": {
+                                                "_displayHeight": 94,
+                                                "_displayWidth": 94,
+                                                "_displayX": 0,
+                                                "_displayY": 0,
+                                                "_height": 94,
+                                                "_left": 0,
+                                                "_name": "armorBar_Right",
+                                                "_texturePath": "res:/UI/Texture/classes/Target/armorRight.png",
+                                                "_top": 0,
+                                                "_width": 94
+                                              }
+                                            },
+                                            {
+                                              "pythonObjectAddress": 1799856806768,
+                                              "pythonObjectTypeName": "Sprite",
+                                              "dictEntriesOfInterest": {
+                                                "_displayHeight": 94,
+                                                "_displayWidth": 94,
+                                                "_displayX": 0,
+                                                "_displayY": 0,
+                                                "_height": 94,
+                                                "_left": 0,
+                                                "_name": "armorBar_Left",
+                                                "_texturePath": "res:/UI/Texture/classes/Target/armorLeft.png",
+                                                "_top": 0,
+                                                "_width": 94
+                                              }
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "pythonObjectAddress": 1801632667464,
+                                          "pythonObjectTypeName": "Container",
+                                          "dictEntriesOfInterest": {
+                                            "_displayHeight": 94,
+                                            "_displayWidth": 94,
+                                            "_displayX": 0,
+                                            "_displayY": 0,
+                                            "_height": 94,
+                                            "_left": 0,
+                                            "_name": "hullBar",
+                                            "_opacity": 1,
+                                            "_top": 0,
+                                            "_width": 94,
+                                            "children": {
+                                              "address": 1801632666288,
+                                              "pythonObjectTypeName": "PyChildrenList"
+                                            }
+                                          },
+                                          "children": [
+                                            {
+                                              "pythonObjectAddress": 1800110333120,
+                                              "pythonObjectTypeName": "Sprite",
+                                              "dictEntriesOfInterest": {
+                                                "_displayHeight": 94,
+                                                "_displayWidth": 94,
+                                                "_displayX": 0,
+                                                "_displayY": 0,
+                                                "_height": 94,
+                                                "_left": 0,
+                                                "_name": "hullBar_Right",
+                                                "_texturePath": "res:/UI/Texture/classes/Target/hullRight.png",
+                                                "_top": 0,
+                                                "_width": 94
+                                              }
+                                            },
+                                            {
+                                              "pythonObjectAddress": 1800110331944,
+                                              "pythonObjectTypeName": "Sprite",
+                                              "dictEntriesOfInterest": {
+                                                "_displayHeight": 94,
+                                                "_displayWidth": 94,
+                                                "_displayX": 0,
+                                                "_displayY": 0,
+                                                "_height": 94,
+                                                "_left": 0,
+                                                "_name": "hullBar_Left",
+                                                "_texturePath": "res:/UI/Texture/classes/Target/hullLeft.png",
+                                                "_top": 0,
+                                                "_width": 94
+                                              }
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "pythonObjectAddress": 1800110332000,
+                                          "pythonObjectTypeName": "Sprite",
+                                          "dictEntriesOfInterest": {
+                                            "_displayHeight": 94,
+                                            "_displayWidth": 94,
+                                            "_displayX": 0,
+                                            "_displayY": 0,
+                                            "_height": 94,
+                                            "_left": 0,
+                                            "_name": "healthBarBackground",
+                                            "_texturePath": "res:/UI/Texture/classes/Target/targetBackgroundNoShield.png",
+                                            "_top": 0,
+                                            "_width": 94
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "pythonObjectAddress": 1800110330600,
+                                      "pythonObjectTypeName": "Sprite",
+                                      "dictEntriesOfInterest": {
+                                        "_color": {
+                                          "aPercent": 50,
+                                          "bPercent": 100,
+                                          "gPercent": 100,
+                                          "rPercent": 100
+                                        },
+                                        "_displayHeight": 96,
+                                        "_displayWidth": 96,
+                                        "_displayX": {
+                                          "int": 4294967295,
+                                          "int_low32": -1
+                                        },
+                                        "_displayY": {
+                                          "int": 4294967295,
+                                          "int_low32": -1
+                                        },
+                                        "_height": 96,
+                                        "_left": 0,
+                                        "_name": "circle",
+                                        "_texturePath": "res:/UI/Texture/classes/Target/outerCircle.png",
+                                        "_top": 0,
+                                        "_width": 96
+                                      }
+                                    },
+                                    {
+                                      "pythonObjectAddress": 1800110330544,
+                                      "pythonObjectTypeName": "Transform",
+                                      "dictEntriesOfInterest": {
+                                        "_displayHeight": 94,
+                                        "_displayWidth": 94,
+                                        "_displayX": 0,
+                                        "_displayY": 0,
+                                        "_height": 94,
+                                        "_left": 0,
+                                        "_opacity": 1,
+                                        "_rotation": 0,
+                                        "_top": 0,
+                                        "_width": 94,
+                                        "children": {
+                                          "address": 1800854324056,
+                                          "pythonObjectTypeName": "PyChildrenList"
+                                        }
+                                      },
+                                      "children": [
+                                        {
+                                          "pythonObjectAddress": 1800804198048,
+                                          "pythonObjectTypeName": "ActiveTargetIndicator",
+                                          "dictEntriesOfInterest": {
+                                            "_display": true,
+                                            "_displayHeight": 120,
+                                            "_displayWidth": 120,
+                                            "_displayX": {
+                                              "int": 1803886264307,
+                                              "int_low32": -13
+                                            },
+                                            "_displayY": {
+                                              "int": 1803886264307,
+                                              "int_low32": -13
+                                            },
+                                            "_height": 120,
+                                            "_left": 0,
+                                            "_opacity": 1,
+                                            "_top": 0,
+                                            "_width": 120,
+                                            "children": {
+                                              "address": 1795445471944,
+                                              "pythonObjectTypeName": "PyChildrenList"
+                                            }
+                                          },
+                                          "children": [
+                                            {
+                                              "pythonObjectAddress": 1795445469704,
+                                              "pythonObjectTypeName": "Sprite",
+                                              "dictEntriesOfInterest": {
+                                                "_color": {
+                                                  "aPercent": 41,
+                                                  "bPercent": 100,
+                                                  "gPercent": 100,
+                                                  "rPercent": 100
+                                                },
+                                                "_displayHeight": 120,
+                                                "_displayWidth": 120,
+                                                "_displayX": 0,
+                                                "_displayY": 0,
+                                                "_height": 120,
+                                                "_left": 0,
+                                                "_name": "rotatingArrows",
+                                                "_texturePath": "res:/UI/Texture/classes/Target/spinCorners.png",
+                                                "_top": 0,
+                                                "_width": 120
+                                              }
+                                            },
+                                            {
+                                              "pythonObjectAddress": 1795445470488,
+                                              "pythonObjectTypeName": "Sprite",
+                                              "dictEntriesOfInterest": {
+                                                "_color": {
+                                                  "aPercent": 15,
+                                                  "bPercent": 100,
+                                                  "gPercent": 100,
+                                                  "rPercent": 100
+                                                },
+                                                "_displayHeight": 80,
+                                                "_displayWidth": 80,
+                                                "_displayX": 20,
+                                                "_displayY": 20,
+                                                "_height": 80,
+                                                "_left": 0,
+                                                "_name": "selectedTargetCircle",
+                                                "_texturePath": "res:/UI/Texture/classes/Target/selectedTargetedItem.png",
+                                                "_top": 0,
+                                                "_width": 80
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "pythonObjectAddress": 1801632693440,
+                              "pythonObjectTypeName": "ContainerAutoSize",
+                              "dictEntriesOfInterest": {
+                                "_displayHeight": 48,
+                                "_displayWidth": 110,
+                                "_displayX": 0,
+                                "_displayY": 100,
+                                "_height": 48,
+                                "_name": "labelContainer",
+                                "_opacity": 1,
+                                "children": {
+                                  "address": 1799973569256,
+                                  "pythonObjectTypeName": "UIChildrenListAutoSize"
+                                }
+                              },
+                              "children": [
+                                {
+                                  "pythonObjectAddress": 1801632691760,
+                                  "pythonObjectTypeName": "EveLabelSmall",
+                                  "dictEntriesOfInterest": {
+                                    "_color": {
+                                      "aPercent": 75,
+                                      "bPercent": 100,
+                                      "gPercent": 100,
+                                      "rPercent": 100
+                                    },
+                                    "_displayHeight": 16,
+                                    "_displayWidth": 110,
+                                    "_displayX": 0,
+                                    "_displayY": 0,
+                                    "_height": 16,
+                                    "_setText": "\u003ccenter\u003eCargo Container"
+                                  }
+                                },
+                                {
+                                  "pythonObjectAddress": 1801632692488,
+                                  "pythonObjectTypeName": "EveLabelSmall",
+                                  "dictEntriesOfInterest": {
+                                    "_color": {
+                                      "aPercent": 75,
+                                      "bPercent": 100,
+                                      "gPercent": 100,
+                                      "rPercent": 100
+                                    },
+                                    "_displayHeight": 16,
+                                    "_displayWidth": 110,
+                                    "_displayX": 0,
+                                    "_displayY": 16,
+                                    "_height": 16,
+                                    "_setText": "\u003ccenter\u003e[TBCOM]"
+                                  }
+                                },
+                                {
+                                  "pythonObjectAddress": 1799973569592,
+                                  "pythonObjectTypeName": "EveLabelSmall",
+                                  "dictEntriesOfInterest": {
+                                    "_color": {
+                                      "aPercent": 75,
+                                      "bPercent": 100,
+                                      "gPercent": 100,
+                                      "rPercent": 100
+                                    },
+                                    "_displayHeight": 16,
+                                    "_displayWidth": 110,
+                                    "_displayX": 0,
+                                    "_displayY": 32,
+                                    "_height": 16,
+                                    "_setText": "\u003ccenter\u003e12 km"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "pythonObjectAddress": 1799973568752,
+                              "pythonObjectTypeName": "Container",
+                              "dictEntriesOfInterest": {
+                                "_displayHeight": 32,
+                                "_displayWidth": 110,
+                                "_displayX": 0,
+                                "_displayY": 148,
+                                "_height": 32,
+                                "_left": 0,
+                                "_name": "assignedPar",
+                                "_opacity": 1,
+                                "_top": 0,
+                                "_width": 0,
+                                "children": {
+                                  "address": 1799973571776,
+                                  "pythonObjectTypeName": "PyChildrenList"
+                                }
+                              },
+                              "children": [
+                                {
+                                  "pythonObjectAddress": 1799973570040,
+                                  "pythonObjectTypeName": "Container",
+                                  "dictEntriesOfInterest": {
+                                    "_displayHeight": 32,
+                                    "_displayWidth": 0,
+                                    "_displayX": 55,
+                                    "_displayY": 0,
+                                    "_height": 32,
+                                    "_left": 0,
+                                    "_name": "assigned",
+                                    "_opacity": 1,
+                                    "_top": 0,
+                                    "_width": 0,
+                                    "children": {
+                                      "address": 1799973571496,
+                                      "pythonObjectTypeName": "PyChildrenList"
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "pythonObjectAddress": 1797745308112,
+                          "pythonObjectTypeName": "TargetInBar",
+                          "dictEntriesOfInterest": {
+                            "_displayHeight": 190,
+                            "_displayWidth": 110,
+                            "_displayX": 110,
+                            "_displayY": 0,
+                            "_height": 180,
+                            "_left": 0,
+                            "_name": "target",
+                            "_opacity": 1,
+                            "_sr": {
+                              "entriesOfInterest": {}
+                            },
+                            "_top": 0,
+                            "_width": 110,
+                            "children": {
+                              "address": 1800110331440,
+                              "pythonObjectTypeName": "UIChildrenListAutoSize"
+                            }
+                          },
+                          "children": [
+                            {
+                              "pythonObjectAddress": 1801632678408,
+                              "pythonObjectTypeName": "Container",
+                              "dictEntriesOfInterest": {
+                                "_displayHeight": 100,
+                                "_displayWidth": 110,
+                                "_displayX": 0,
+                                "_displayY": 0,
+                                "_height": 100,
+                                "_hint": "",
+                                "_left": 0,
+                                "_name": "barAndImageCont",
+                                "_opacity": 1,
+                                "_sr": {
+                                  "entriesOfInterest": {}
+                                },
+                                "_top": 0,
+                                "_width": 0,
+                                "children": {
+                                  "address": 1801632679528,
+                                  "pythonObjectTypeName": "PyChildrenList"
+                                }
+                              },
+                              "children": [
+                                {
+                                  "pythonObjectAddress": 1801632678072,
+                                  "pythonObjectTypeName": "Transform",
+                                  "dictEntriesOfInterest": {
+                                    "_displayHeight": 94,
+                                    "_displayWidth": 94,
+                                    "_displayX": 8,
+                                    "_displayY": 0,
+                                    "_height": 94,
+                                    "_left": 0,
+                                    "_name": "iconPar",
+                                    "_opacity": 0.8,
+                                    "_rotation": 0,
+                                    "_top": 0,
+                                    "_width": 94,
+                                    "children": {
+                                      "address": 1801632678016,
+                                      "pythonObjectTypeName": "PyChildrenList"
+                                    }
+                                  },
+                                  "children": [
+                                    {
+                                      "pythonObjectAddress": 1800110352592,
+                                      "pythonObjectTypeName": "FlagIconWithState",
+                                      "dictEntriesOfInterest": {
+                                        "_displayHeight": 10,
+                                        "_displayWidth": 10,
+                                        "_displayX": 42,
+                                        "_displayY": 76,
+                                        "_height": 10,
+                                        "_left": 0,
+                                        "_opacity": 1,
+                                        "_top": 8,
+                                        "_width": 10,
+                                        "children": {
+                                          "address": 1800110293176,
+                                          "pythonObjectTypeName": "PyChildrenList"
+                                        }
+                                      },
+                                      "children": [
+                                        {
+                                          "pythonObjectAddress": 1800110294800,
+                                          "pythonObjectTypeName": "Sprite",
+                                          "dictEntriesOfInterest": {
+                                            "_color": {
+                                              "aPercent": 100,
+                                              "bPercent": 100,
+                                              "gPercent": 100,
+                                              "rPercent": 100
+                                            },
+                                            "_displayHeight": 8,
+                                            "_displayWidth": 8,
+                                            "_displayX": 1,
+                                            "_displayY": 1,
+                                            "_height": 8,
+                                            "_left": 0,
+                                            "_name": "flagIcon",
+                                            "_texturePath": "res:/UI/Texture/classes/FlagIcon/8/3.png",
+                                            "_top": 0,
+                                            "_width": 8
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "pythonObjectAddress": 1801632681208,
+                                      "pythonObjectTypeName": "Icon",
+                                      "dictEntriesOfInterest": {
+                                        "_displayHeight": 50,
+                                        "_displayWidth": 50,
+                                        "_displayX": 22,
+                                        "_displayY": 22,
+                                        "_height": 50,
+                                        "_left": 22,
+                                        "_texturePath": "res:/dx9/model/deployables/generic/citadel/m/cm1/icons/21137_64.png",
+                                        "_top": 22,
+                                        "_width": 50
+                                      }
+                                    },
+                                    {
+                                      "pythonObjectAddress": 1801632678912,
+                                      "pythonObjectTypeName": "TargetHealthBars",
+                                      "dictEntriesOfInterest": {
+                                        "_displayHeight": 94,
+                                        "_displayWidth": 94,
+                                        "_displayX": 0,
+                                        "_displayY": 0,
+                                        "_height": 94,
+                                        "_left": 0,
+                                        "_opacity": 1,
+                                        "_sr": {
+                                          "entriesOfInterest": {}
+                                        },
+                                        "_top": 0,
+                                        "_width": 94,
+                                        "children": {
+                                          "address": 1801632679304,
+                                          "pythonObjectTypeName": "PyChildrenList"
+                                        }
+                                      },
+                                      "children": [
+                                        {
+                                          "pythonObjectAddress": 1801632681936,
+                                          "pythonObjectTypeName": "Container",
+                                          "dictEntriesOfInterest": {
+                                            "_displayHeight": 94,
+                                            "_displayWidth": 94,
+                                            "_displayX": 0,
+                                            "_displayY": 0,
+                                            "_height": 94,
+                                            "_left": 0,
+                                            "_name": "shieldBar",
+                                            "_opacity": 1,
+                                            "_top": 0,
+                                            "_width": 94,
+                                            "children": {
+                                              "address": 1801632680144,
+                                              "pythonObjectTypeName": "PyChildrenList"
+                                            }
+                                          },
+                                          "children": [
+                                            {
+                                              "pythonObjectAddress": 1801632680480,
+                                              "pythonObjectTypeName": "Sprite",
+                                              "dictEntriesOfInterest": {
+                                                "_displayHeight": 94,
+                                                "_displayWidth": 94,
+                                                "_displayX": 0,
+                                                "_displayY": 0,
+                                                "_height": 94,
+                                                "_left": 0,
+                                                "_name": "shieldBar_Right",
+                                                "_texturePath": "res:/UI/Texture/classes/Target/shieldRight.png",
+                                                "_top": 0,
+                                                "_width": 94
+                                              }
+                                            },
+                                            {
+                                              "pythonObjectAddress": 1801632679472,
+                                              "pythonObjectTypeName": "Sprite",
+                                              "dictEntriesOfInterest": {
+                                                "_displayHeight": 94,
+                                                "_displayWidth": 94,
+                                                "_displayX": 0,
+                                                "_displayY": 0,
+                                                "_height": 94,
+                                                "_left": 0,
+                                                "_name": "shieldBar_Left",
+                                                "_texturePath": "res:/UI/Texture/classes/Target/shieldLeft.png",
+                                                "_top": 0,
+                                                "_width": 94
+                                              }
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "pythonObjectAddress": 1801632681544,
+                                          "pythonObjectTypeName": "Container",
+                                          "dictEntriesOfInterest": {
+                                            "_displayHeight": 94,
+                                            "_displayWidth": 94,
+                                            "_displayX": 0,
+                                            "_displayY": 0,
+                                            "_height": 94,
+                                            "_left": 0,
+                                            "_name": "armorBar",
+                                            "_opacity": 1,
+                                            "_top": 0,
+                                            "_width": 94,
+                                            "children": {
+                                              "address": 1801632679192,
+                                              "pythonObjectTypeName": "PyChildrenList"
+                                            }
+                                          },
+                                          "children": [
+                                            {
+                                              "pythonObjectAddress": 1801632579312,
+                                              "pythonObjectTypeName": "Sprite",
+                                              "dictEntriesOfInterest": {
+                                                "_displayHeight": 94,
+                                                "_displayWidth": 94,
+                                                "_displayX": 0,
+                                                "_displayY": 0,
+                                                "_height": 94,
+                                                "_left": 0,
+                                                "_name": "armorBar_Right",
+                                                "_texturePath": "res:/UI/Texture/classes/Target/armorRight.png",
+                                                "_top": 0,
+                                                "_width": 94
+                                              }
+                                            },
+                                            {
+                                              "pythonObjectAddress": 1799856643040,
+                                              "pythonObjectTypeName": "Sprite",
+                                              "dictEntriesOfInterest": {
+                                                "_displayHeight": 94,
+                                                "_displayWidth": 94,
+                                                "_displayX": 0,
+                                                "_displayY": 0,
+                                                "_height": 94,
+                                                "_left": 0,
+                                                "_name": "armorBar_Left",
+                                                "_texturePath": "res:/UI/Texture/classes/Target/armorLeft.png",
+                                                "_top": 0,
+                                                "_width": 94
+                                              }
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "pythonObjectAddress": 1801632577240,
+                                          "pythonObjectTypeName": "Container",
+                                          "dictEntriesOfInterest": {
+                                            "_displayHeight": 94,
+                                            "_displayWidth": 94,
+                                            "_displayX": 0,
+                                            "_displayY": 0,
+                                            "_height": 94,
+                                            "_left": 0,
+                                            "_name": "hullBar",
+                                            "_opacity": 1,
+                                            "_top": 0,
+                                            "_width": 94,
+                                            "children": {
+                                              "address": 1801632578024,
+                                              "pythonObjectTypeName": "PyChildrenList"
+                                            }
+                                          },
+                                          "children": [
+                                            {
+                                              "pythonObjectAddress": 1801632578752,
+                                              "pythonObjectTypeName": "Sprite",
+                                              "dictEntriesOfInterest": {
+                                                "_displayHeight": 94,
+                                                "_displayWidth": 94,
+                                                "_displayX": 0,
+                                                "_displayY": 0,
+                                                "_height": 94,
+                                                "_left": 0,
+                                                "_name": "hullBar_Right",
+                                                "_texturePath": "res:/UI/Texture/classes/Target/hullRight.png",
+                                                "_top": 0,
+                                                "_width": 94
+                                              }
+                                            },
+                                            {
+                                              "pythonObjectAddress": 1801632578248,
+                                              "pythonObjectTypeName": "Sprite",
+                                              "dictEntriesOfInterest": {
+                                                "_displayHeight": 94,
+                                                "_displayWidth": 94,
+                                                "_displayX": 0,
+                                                "_displayY": 0,
+                                                "_height": 94,
+                                                "_left": 0,
+                                                "_name": "hullBar_Left",
+                                                "_texturePath": "res:/UI/Texture/classes/Target/hullLeft.png",
+                                                "_top": 0,
+                                                "_width": 94
+                                              }
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "pythonObjectAddress": 1801632577520,
+                                          "pythonObjectTypeName": "Sprite",
+                                          "dictEntriesOfInterest": {
+                                            "_displayHeight": 94,
+                                            "_displayWidth": 94,
+                                            "_displayX": 0,
+                                            "_displayY": 0,
+                                            "_height": 94,
+                                            "_left": 0,
+                                            "_name": "healthBarBackground",
+                                            "_texturePath": "res:/UI/Texture/classes/Target/targetBackground.png",
+                                            "_top": 0,
+                                            "_width": 94
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "pythonObjectAddress": 1801632577072,
+                                      "pythonObjectTypeName": "Sprite",
+                                      "dictEntriesOfInterest": {
+                                        "_color": {
+                                          "aPercent": 25,
+                                          "bPercent": 100,
+                                          "gPercent": 100,
+                                          "rPercent": 100
+                                        },
+                                        "_displayHeight": 96,
+                                        "_displayWidth": 96,
+                                        "_displayX": {
+                                          "int": 4294967295,
+                                          "int_low32": -1
+                                        },
+                                        "_displayY": {
+                                          "int": 4294967295,
+                                          "int_low32": -1
+                                        },
+                                        "_height": 96,
+                                        "_left": 0,
+                                        "_name": "circle",
+                                        "_texturePath": "res:/UI/Texture/classes/Target/outerCircle.png",
+                                        "_top": 0,
+                                        "_width": 96
+                                      }
+                                    },
+                                    {
+                                      "pythonObjectAddress": 1801632576232,
+                                      "pythonObjectTypeName": "Transform",
+                                      "dictEntriesOfInterest": {
+                                        "_displayHeight": 94,
+                                        "_displayWidth": 94,
+                                        "_displayX": 0,
+                                        "_displayY": 0,
+                                        "_height": 94,
+                                        "_left": 0,
+                                        "_opacity": 1,
+                                        "_rotation": 0,
+                                        "_top": 0,
+                                        "_width": 94,
+                                        "children": {
+                                          "address": 1801632577856,
+                                          "pythonObjectTypeName": "PyChildrenList"
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "pythonObjectAddress": 1801632717344,
+                              "pythonObjectTypeName": "ContainerAutoSize",
+                              "dictEntriesOfInterest": {
+                                "_displayHeight": 48,
+                                "_displayWidth": 110,
+                                "_displayX": 0,
+                                "_displayY": 100,
+                                "_height": 48,
+                                "_name": "labelContainer",
+                                "_opacity": 1,
+                                "children": {
+                                  "address": 1801632716896,
+                                  "pythonObjectTypeName": "UIChildrenListAutoSize"
+                                }
+                              },
+                              "children": [
+                                {
+                                  "pythonObjectAddress": 1801632716616,
+                                  "pythonObjectTypeName": "EveLabelSmall",
+                                  "dictEntriesOfInterest": {
+                                    "_color": {
+                                      "aPercent": 75,
+                                      "bPercent": 100,
+                                      "gPercent": 100,
+                                      "rPercent": 100
+                                    },
+                                    "_displayHeight": 16,
+                                    "_displayWidth": 110,
+                                    "_displayX": 0,
+                                    "_displayY": 0,
+                                    "_height": 16,
+                                    "_setText": "\u003ccenter\u003eRBW-8G -"
+                                  }
+                                },
+                                {
+                                  "pythonObjectAddress": 1800110352872,
+                                  "pythonObjectTypeName": "EveLabelSmall",
+                                  "dictEntriesOfInterest": {
+                                    "_color": {
+                                      "aPercent": 75,
+                                      "bPercent": 100,
+                                      "gPercent": 100,
+                                      "rPercent": 100
+                                    },
+                                    "_displayHeight": 16,
+                                    "_displayWidth": 110,
+                                    "_displayX": 0,
+                                    "_displayY": 16,
+                                    "_height": 16,
+                                    "_setText": "\u003ccenter\u003eAnime Studio [3UST]"
+                                  }
+                                },
+                                {
+                                  "pythonObjectAddress": 1801632716840,
+                                  "pythonObjectTypeName": "EveLabelSmall",
+                                  "dictEntriesOfInterest": {
+                                    "_color": {
+                                      "aPercent": 75,
+                                      "bPercent": 100,
+                                      "gPercent": 100,
+                                      "rPercent": 100
+                                    },
+                                    "_displayHeight": 16,
+                                    "_displayWidth": 110,
+                                    "_displayX": 0,
+                                    "_displayY": 32,
+                                    "_height": 16,
+                                    "_setText": "\u003ccenter\u003e0 m"
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "pythonObjectAddress": 1801632718632,
+                              "pythonObjectTypeName": "Container",
+                              "dictEntriesOfInterest": {
+                                "_displayHeight": 32,
+                                "_displayWidth": 110,
+                                "_displayX": 0,
+                                "_displayY": 148,
+                                "_height": 32,
+                                "_left": 0,
+                                "_name": "assignedPar",
+                                "_opacity": 1,
+                                "_top": 0,
+                                "_width": 0,
+                                "children": {
+                                  "address": 1801632716392,
+                                  "pythonObjectTypeName": "PyChildrenList"
+                                }
+                              },
+                              "children": [
+                                {
+                                  "pythonObjectAddress": 1801632716728,
+                                  "pythonObjectTypeName": "Container",
+                                  "dictEntriesOfInterest": {
+                                    "_displayHeight": 32,
+                                    "_displayWidth": 0,
+                                    "_displayX": 55,
+                                    "_displayY": 0,
+                                    "_height": 32,
+                                    "_left": 0,
+                                    "_name": "assigned",
+                                    "_opacity": 1,
+                                    "_top": 0,
+                                    "_width": 0,
+                                    "children": {
+                                      "address": 1801632715160,
+                                      "pythonObjectTypeName": "PyChildrenList"
+                                    }
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
                     },
                     {
                       "pythonObjectAddress": 1798346160896,
@@ -13166,7 +14437,7 @@
                           "int_low32": 664
                         },
                         "_displayX": 0,
-                        "_displayY": 201,
+                        "_displayY": 191,
                         "_height": 180,
                         "_left": 0,
                         "_name": "aRowx_1",
@@ -13177,6 +14448,82 @@
                           "address": 1798346158600,
                           "pythonObjectTypeName": "PyChildrenList"
                         }
+                      }
+                    }
+                  ]
+                },
+                {
+                  "pythonObjectAddress": 1801632691816,
+                  "pythonObjectTypeName": "Container",
+                  "dictEntriesOfInterest": {
+                    "_displayHeight": 16,
+                    "_displayWidth": 16,
+                    "_displayX": {
+                      "int": 1795296330035,
+                      "int_low32": 307
+                    },
+                    "_displayY": 553,
+                    "_height": 16,
+                    "_hint": "Target List Anchor",
+                    "_left": {
+                      "int": 1799591297331,
+                      "int_low32": 307
+                    },
+                    "_name": "targetOrigin",
+                    "_opacity": 0.75,
+                    "_top": 158,
+                    "_width": 16,
+                    "children": {
+                      "address": 1801632693552,
+                      "pythonObjectTypeName": "PyChildrenList"
+                    }
+                  },
+                  "children": [
+                    {
+                      "pythonObjectAddress": 1801632690752,
+                      "pythonObjectTypeName": "Line",
+                      "dictEntriesOfInterest": {
+                        "_displayHeight": 4,
+                        "_displayWidth": 1,
+                        "_displayX": 7,
+                        "_displayY": {
+                          "int": 4294967292,
+                          "int_low32": -4
+                        },
+                        "_height": 4,
+                        "_left": 7,
+                        "_top": {
+                          "int": 4294967292,
+                          "int_low32": -4
+                        },
+                        "_width": 1
+                      }
+                    },
+                    {
+                      "pythonObjectAddress": 1799973569088,
+                      "pythonObjectTypeName": "Line",
+                      "dictEntriesOfInterest": {
+                        "_displayHeight": 1,
+                        "_displayWidth": 4,
+                        "_displayX": 15,
+                        "_displayY": 7,
+                        "_height": 1,
+                        "_left": 15,
+                        "_top": 7,
+                        "_width": 4
+                      }
+                    },
+                    {
+                      "pythonObjectAddress": 1799973568976,
+                      "pythonObjectTypeName": "Icon",
+                      "dictEntriesOfInterest": {
+                        "_displayHeight": 16,
+                        "_displayWidth": 16,
+                        "_displayX": 0,
+                        "_displayY": 0,
+                        "_height": 16,
+                        "_texturePath": "res:/ui/texture/icons/38_16_72.png",
+                        "_width": 16
                       }
                     }
                   ]
@@ -16131,7 +17478,7 @@
                         },
                         "_displayX": 200,
                         "_displayY": {
-                          "int": 4783588201799352130,
+                          "int": 4294967106,
                           "int_low32": -190
                         },
                         "_height": 138,
@@ -16171,7 +17518,7 @@
                               "dictEntriesOfInterest": {
                                 "_displayHeight": 30,
                                 "_displayWidth": {
-                                  "int": 4607182418800018208,
+                                  "int": 1799591297824,
                                   "int_low32": 800
                                 },
                                 "_displayX": 0,
@@ -16193,7 +17540,7 @@
                                     "_displayHeight": 30,
                                     "_displayWidth": 118,
                                     "_displayX": {
-                                      "int": 4607182418800017749,
+                                      "int": 4788680624263135573,
                                       "int_low32": 341
                                     },
                                     "_displayY": 0,
@@ -16319,7 +17666,7 @@
                                 },
                                 "_displayHeight": 18,
                                 "_displayWidth": {
-                                  "int": 1799591297824,
+                                  "int": 4607182418800018208,
                                   "int_low32": 800
                                 },
                                 "_displayX": 0,
@@ -16336,7 +17683,7 @@
                           "dictEntriesOfInterest": {
                             "_displayHeight": 90,
                             "_displayWidth": {
-                              "int": 1795296330528,
+                              "int": 4607182418800018208,
                               "int_low32": 800
                             },
                             "_displayX": 0,
@@ -16447,13 +17794,13 @@
                   "pythonObjectTypeName": "BuffBarContainer",
                   "dictEntriesOfInterest": {
                     "_displayHeight": 44,
-                    "_displayWidth": 48,
+                    "_displayWidth": 0,
                     "_displayX": {
-                      "int": 4788742338648211925,
-                      "int_low32": 469
+                      "int": 4788755335219249645,
+                      "int_low32": 493
                     },
                     "_displayY": {
-                      "int": 4783587385755566563,
+                      "int": 1799591297507,
                       "int_low32": 483
                     },
                     "_height": 44,
@@ -16463,7 +17810,7 @@
                     },
                     "_opacity": 1,
                     "_top": 200,
-                    "_width": 48,
+                    "_width": 0,
                     "children": {
                       "address": 1795385146896,
                       "pythonObjectTypeName": "UIChildrenListAutoSize"
@@ -16488,127 +17835,6 @@
                           "pythonObjectTypeName": "UIChildrenListAutoSize"
                         }
                       }
-                    },
-                    {
-                      "pythonObjectAddress": 1795443402680,
-                      "pythonObjectTypeName": "BuffSlotParent",
-                      "dictEntriesOfInterest": {
-                        "_display": true,
-                        "_displayHeight": 44,
-                        "_displayWidth": 48,
-                        "_displayX": 0,
-                        "_displayY": 0,
-                        "_height": 40,
-                        "_left": 0,
-                        "_name": "tethering",
-                        "_opacity": 0.9999521970748901,
-                        "_top": 0,
-                        "_width": 48,
-                        "children": {
-                          "address": 1795443402736,
-                          "pythonObjectTypeName": "PyChildrenList"
-                        }
-                      },
-                      "children": [
-                        {
-                          "pythonObjectAddress": 1795443402456,
-                          "pythonObjectTypeName": "DefensiveBuffButton",
-                          "dictEntriesOfInterest": {
-                            "_displayHeight": 40,
-                            "_displayWidth": 40,
-                            "_displayX": 4,
-                            "_displayY": 2,
-                            "_height": 40,
-                            "_left": 0,
-                            "_name": "tethering",
-                            "_opacity": 1,
-                            "_top": 0,
-                            "_width": 40,
-                            "children": {
-                              "address": 1795443402400,
-                              "pythonObjectTypeName": "PyChildrenList"
-                            }
-                          },
-                          "children": [
-                            {
-                              "pythonObjectAddress": 1795443401560,
-                              "pythonObjectTypeName": "Icon",
-                              "dictEntriesOfInterest": {
-                                "_color": {
-                                  "aPercent": 100,
-                                  "bPercent": 0,
-                                  "gPercent": 0,
-                                  "rPercent": 70
-                                },
-                                "_displayHeight": 40,
-                                "_displayWidth": 40,
-                                "_displayX": 0,
-                                "_displayY": 0,
-                                "_height": 40,
-                                "_left": 0,
-                                "_name": "bufficon",
-                                "_texturePath": "res:/UI/Texture/Icons/StatusEffects/tether.png",
-                                "_top": 0,
-                                "_width": 40
-                              }
-                            },
-                            {
-                              "pythonObjectAddress": 1795443400944,
-                              "pythonObjectTypeName": "Sprite",
-                              "dictEntriesOfInterest": {
-                                "_color": {
-                                  "aPercent": 25,
-                                  "bPercent": 60,
-                                  "gPercent": 60,
-                                  "rPercent": 0
-                                },
-                                "_displayHeight": 40,
-                                "_displayWidth": 40,
-                                "_displayX": 0,
-                                "_displayY": 0,
-                                "_name": "slot_gradient",
-                                "_texturePath": "res:/UI/Texture/classes/ShipUI/EwarBar/ewarBarUnderlayGrad.png"
-                              }
-                            },
-                            {
-                              "pythonObjectAddress": 1795443403128,
-                              "pythonObjectTypeName": "Sprite",
-                              "dictEntriesOfInterest": {
-                                "_color": {
-                                  "aPercent": 20,
-                                  "bPercent": 60,
-                                  "gPercent": 60,
-                                  "rPercent": 0
-                                },
-                                "_displayHeight": 40,
-                                "_displayWidth": 40,
-                                "_displayX": 0,
-                                "_displayY": 0,
-                                "_name": "slot_base",
-                                "_texturePath": "res:/UI/Texture/classes/ShipUI/EwarBar/ewarBarUnderlayClean.png"
-                              }
-                            },
-                            {
-                              "pythonObjectAddress": 1795443402848,
-                              "pythonObjectTypeName": "Sprite",
-                              "dictEntriesOfInterest": {
-                                "_color": {
-                                  "aPercent": 25,
-                                  "bPercent": 100,
-                                  "gPercent": 100,
-                                  "rPercent": 100
-                                },
-                                "_displayHeight": 40,
-                                "_displayWidth": 40,
-                                "_displayX": 0,
-                                "_displayY": 0,
-                                "_name": "shadow",
-                                "_texturePath": "res:/UI/Texture/classes/ShipUI/EwarBar/ewarBarShadow.png"
-                              }
-                            }
-                          ]
-                        }
-                      ]
                     }
                   ]
                 }
@@ -17263,7 +18489,7 @@
                                     "_displayY": 3,
                                     "_height": 14,
                                     "_name": "clock_label",
-                                    "_setText": "\u003cb\u003e14:20\u003c/b\u003e",
+                                    "_setText": "\u003cb\u003e14:23\u003c/b\u003e",
                                     "_width": 27
                                   }
                                 }
@@ -19585,11 +20811,11 @@
           "dictEntriesOfInterest": {
             "_display": true,
             "_displayHeight": {
-              "int": 4783575089264198359,
+              "int": 4788773455686271703,
               "int_low32": 727
             },
             "_displayWidth": {
-              "int": 4783601035161633747,
+              "int": 4788755335219250131,
               "int_low32": 979
             },
             "_displayX": 45,
@@ -19669,14 +20895,57 @@
               },
               "children": [
                 {
-                  "pythonObjectAddress": 1799973561792,
+                  "pythonObjectAddress": 1801632730304,
                   "pythonObjectTypeName": "BracketShadowLabel",
                   "dictEntriesOfInterest": {
                     "_displayHeight": 16,
-                    "_displayWidth": 295,
+                    "_displayWidth": 61,
                     "_displayX": 0,
                     "_displayY": {
                       "int": 1803886263820,
+                      "int_low32": -500
+                    },
+                    "_height": 16,
+                    "_name": "sublabelparent",
+                    "_opacity": 1,
+                    "_top": {
+                      "int": 4294966796,
+                      "int_low32": -500
+                    },
+                    "_width": 61,
+                    "children": {
+                      "address": 1800110331552,
+                      "pythonObjectTypeName": "PyChildrenList"
+                    }
+                  },
+                  "children": [
+                    {
+                      "pythonObjectAddress": 1801632679752,
+                      "pythonObjectTypeName": "LabelCore",
+                      "dictEntriesOfInterest": {
+                        "_displayHeight": 16,
+                        "_displayWidth": 61,
+                        "_displayX": 0,
+                        "_displayY": 0,
+                        "_height": 16,
+                        "_setText": "Vulnerable",
+                        "_width": 61
+                      }
+                    }
+                  ]
+                },
+                {
+                  "pythonObjectAddress": 1800110406568,
+                  "pythonObjectTypeName": "BracketShadowLabel",
+                  "dictEntriesOfInterest": {
+                    "_displayHeight": 16,
+                    "_displayWidth": {
+                      "int": 1795296330019,
+                      "int_low32": 291
+                    },
+                    "_displayX": 0,
+                    "_displayY": {
+                      "int": 4788789235396115980,
                       "int_low32": -500
                     },
                     "_height": 16,
@@ -19687,31 +20956,31 @@
                       "int_low32": -500
                     },
                     "_width": {
-                      "int": 4607182418800017703,
-                      "int_low32": 295
+                      "int": 4607182418800017699,
+                      "int_low32": 291
                     },
                     "children": {
-                      "address": 1799973561736,
+                      "address": 1799856655440,
                       "pythonObjectTypeName": "PyChildrenList"
                     }
                   },
                   "children": [
                     {
-                      "pythonObjectAddress": 1800110406568,
+                      "pythonObjectAddress": 1799973561792,
                       "pythonObjectTypeName": "LabelCore",
                       "dictEntriesOfInterest": {
                         "_displayHeight": 16,
                         "_displayWidth": {
-                          "int": 4775190333849862439,
-                          "int_low32": 295
+                          "int": 1795296330019,
+                          "int_low32": 291
                         },
                         "_displayX": 0,
                         "_displayY": 0,
                         "_height": 16,
-                        "_setText": "Cargo Container \u0026lt;FERRA\u0026gt;(Cargo Container) 12 km",
+                        "_setText": "RBW-8G - Anime Studio \u0026lt;MMMMM\u0026gt;(Astrahus) [3]",
                         "_width": {
-                          "int": 4607182418800017703,
-                          "int_low32": 295
+                          "int": 1795296330019,
+                          "int_low32": 291
                         }
                       }
                     }
@@ -19806,33 +21075,257 @@
                       }
                     },
                     {
-                      "pythonObjectAddress": 1801344467240,
-                      "pythonObjectTypeName": "Sprite",
+                      "pythonObjectAddress": 1795445473120,
+                      "pythonObjectTypeName": "TargetedIndicator",
                       "dictEntriesOfInterest": {
-                        "_color": {
-                          "aPercent": 50,
-                          "bPercent": 0,
-                          "gPercent": 0,
-                          "rPercent": 0
-                        },
-                        "_display": true,
-                        "_displayHeight": 30,
-                        "_displayWidth": 30,
+                        "_displayHeight": 94,
+                        "_displayWidth": 94,
                         "_displayX": {
-                          "int": 1803886264313,
-                          "int_low32": -7
+                          "int": 4587421686587981785,
+                          "int_low32": -39
                         },
                         "_displayY": {
-                          "int": 1803886264313,
-                          "int_low32": -7
+                          "int": 1799591296985,
+                          "int_low32": -39
                         },
-                        "_height": 30,
+                        "_height": 94,
                         "_left": 0,
-                        "_name": "selection",
-                        "_texturePath": "res:/UI/Texture/classes/Bracket/selectionCircle.png",
+                        "_opacity": 1,
                         "_top": 0,
-                        "_width": 30
-                      }
+                        "_width": 94,
+                        "children": {
+                          "address": 1795445472672,
+                          "pythonObjectTypeName": "PyChildrenList"
+                        }
+                      },
+                      "children": [
+                        {
+                          "pythonObjectAddress": 1795445470712,
+                          "pythonObjectTypeName": "Sprite",
+                          "dictEntriesOfInterest": {
+                            "_color": {
+                              "aPercent": 50,
+                              "bPercent": 100,
+                              "gPercent": 100,
+                              "rPercent": 100
+                            },
+                            "_displayHeight": 96,
+                            "_displayWidth": 96,
+                            "_displayX": {
+                              "int": 4294967295,
+                              "int_low32": -1
+                            },
+                            "_displayY": {
+                              "int": 4294967295,
+                              "int_low32": -1
+                            },
+                            "_height": 96,
+                            "_left": 0,
+                            "_name": "circle",
+                            "_texturePath": "res:/UI/Texture/classes/Target/outerCircle.png",
+                            "_top": 0,
+                            "_width": 96
+                          }
+                        },
+                        {
+                          "pythonObjectAddress": 1795445472224,
+                          "pythonObjectTypeName": "Container",
+                          "dictEntriesOfInterest": {
+                            "_displayHeight": 1,
+                            "_displayWidth": 1,
+                            "_displayX": 47,
+                            "_displayY": 47,
+                            "_height": 1,
+                            "_left": 0,
+                            "_name": "lines",
+                            "_opacity": 0.2,
+                            "_top": 0,
+                            "_width": 1,
+                            "children": {
+                              "address": 1795445471720,
+                              "pythonObjectTypeName": "PyChildrenList"
+                            }
+                          },
+                          "children": [
+                            {
+                              "pythonObjectAddress": 1795445469368,
+                              "pythonObjectTypeName": "TargetLine",
+                              "dictEntriesOfInterest": {
+                                "_displayHeight": {
+                                  "int": 1799591297751,
+                                  "int_low32": 727
+                                },
+                                "_displayWidth": 1,
+                                "_displayX": 0,
+                                "_displayY": {
+                                  "int": 1799591296253,
+                                  "int_low32": -771
+                                },
+                                "_height": {
+                                  "int": 4783614379625022167,
+                                  "int_low32": 727
+                                },
+                                "_left": 0,
+                                "_name": "linetop",
+                                "_top": {
+                                  "int": -4611473456200942339,
+                                  "int_low32": -771
+                                },
+                                "_width": 1
+                              }
+                            },
+                            {
+                              "pythonObjectAddress": 1795445473064,
+                              "pythonObjectTypeName": "TargetLine",
+                              "dictEntriesOfInterest": {
+                                "_displayHeight": 1,
+                                "_displayWidth": {
+                                  "int": 4595078994801460224,
+                                  "int_low32": 1024
+                                },
+                                "_displayX": {
+                                  "int": 1799591295956,
+                                  "int_low32": -1068
+                                },
+                                "_displayY": {
+                                  "int": 4294967295,
+                                  "int_low32": -1
+                                },
+                                "_height": 1,
+                                "_left": {
+                                  "int": -4606969856573572140,
+                                  "int_low32": -1068
+                                },
+                                "_name": "lineleft",
+                                "_top": {
+                                  "int": 4294967295,
+                                  "int_low32": -1
+                                },
+                                "_width": {
+                                  "int": 4783587385755567104,
+                                  "int_low32": 1024
+                                }
+                              }
+                            },
+                            {
+                              "pythonObjectAddress": 1795445471328,
+                              "pythonObjectTypeName": "TargetLine",
+                              "dictEntriesOfInterest": {
+                                "_displayHeight": 1,
+                                "_displayWidth": {
+                                  "int": 1795296330752,
+                                  "int_low32": 1024
+                                },
+                                "_displayX": 46,
+                                "_displayY": {
+                                  "int": 4294967295,
+                                  "int_low32": -1
+                                },
+                                "_height": 1,
+                                "_left": 46,
+                                "_name": "lineright",
+                                "_top": {
+                                  "int": 4294967295,
+                                  "int_low32": -1
+                                },
+                                "_width": 1024
+                              }
+                            },
+                            {
+                              "pythonObjectAddress": 1795445471552,
+                              "pythonObjectTypeName": "TargetLine",
+                              "dictEntriesOfInterest": {
+                                "_displayHeight": {
+                                  "int": 1795296330455,
+                                  "int_low32": 727
+                                },
+                                "_displayWidth": 1,
+                                "_displayX": 0,
+                                "_displayY": 46,
+                                "_height": {
+                                  "int": 1799591297751,
+                                  "int_low32": 727
+                                },
+                                "_left": 0,
+                                "_name": "linebottom",
+                                "_top": 46,
+                                "_width": 1
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "pythonObjectAddress": 1799465899456,
+                      "pythonObjectTypeName": "ActiveTargetIndicator",
+                      "dictEntriesOfInterest": {
+                        "_displayHeight": 120,
+                        "_displayWidth": 120,
+                        "_displayX": {
+                          "int": 1803886264268,
+                          "int_low32": -52
+                        },
+                        "_displayY": {
+                          "int": 4294967244,
+                          "int_low32": -52
+                        },
+                        "_height": 120,
+                        "_left": 0,
+                        "_opacity": 1,
+                        "_top": 0,
+                        "_width": 120,
+                        "children": {
+                          "address": 1799465900408,
+                          "pythonObjectTypeName": "PyChildrenList"
+                        }
+                      },
+                      "children": [
+                        {
+                          "pythonObjectAddress": 1799465899400,
+                          "pythonObjectTypeName": "Sprite",
+                          "dictEntriesOfInterest": {
+                            "_color": {
+                              "aPercent": 41,
+                              "bPercent": 100,
+                              "gPercent": 100,
+                              "rPercent": 100
+                            },
+                            "_displayHeight": 120,
+                            "_displayWidth": 120,
+                            "_displayX": 0,
+                            "_displayY": 0,
+                            "_height": 120,
+                            "_left": 0,
+                            "_name": "rotatingArrows",
+                            "_texturePath": "res:/UI/Texture/classes/Target/spinCorners.png",
+                            "_top": 0,
+                            "_width": 120
+                          }
+                        },
+                        {
+                          "pythonObjectAddress": 1799465901360,
+                          "pythonObjectTypeName": "Sprite",
+                          "dictEntriesOfInterest": {
+                            "_color": {
+                              "aPercent": 15,
+                              "bPercent": 100,
+                              "gPercent": 100,
+                              "rPercent": 100
+                            },
+                            "_displayHeight": 80,
+                            "_displayWidth": 80,
+                            "_displayX": 20,
+                            "_displayY": 20,
+                            "_height": 80,
+                            "_left": 0,
+                            "_name": "selectedTargetCircle",
+                            "_texturePath": "res:/UI/Texture/classes/Target/selectedTargetedItem.png",
+                            "_top": 0,
+                            "_width": 80
+                          }
+                        }
+                      ]
                     }
                   ]
                 },
@@ -21498,6 +22991,220 @@
                         "_top": 0,
                         "_width": 16
                       }
+                    },
+                    {
+                      "pythonObjectAddress": 1801344469984,
+                      "pythonObjectTypeName": "Sprite",
+                      "dictEntriesOfInterest": {
+                        "_color": {
+                          "aPercent": 50,
+                          "bPercent": 0,
+                          "gPercent": 0,
+                          "rPercent": 0
+                        },
+                        "_display": true,
+                        "_displayHeight": 30,
+                        "_displayWidth": 30,
+                        "_displayX": {
+                          "int": 4294967289,
+                          "int_low32": -7
+                        },
+                        "_displayY": {
+                          "int": 1799591297017,
+                          "int_low32": -7
+                        },
+                        "_height": 30,
+                        "_left": 0,
+                        "_name": "selection",
+                        "_texturePath": "res:/UI/Texture/classes/Bracket/selectionCircle.png",
+                        "_top": 0,
+                        "_width": 30
+                      }
+                    },
+                    {
+                      "pythonObjectAddress": 1799856807048,
+                      "pythonObjectTypeName": "TargetedIndicator",
+                      "dictEntriesOfInterest": {
+                        "_displayHeight": 94,
+                        "_displayWidth": 94,
+                        "_displayX": {
+                          "int": 4564899775735922649,
+                          "int_low32": -39
+                        },
+                        "_displayY": {
+                          "int": 1803886264281,
+                          "int_low32": -39
+                        },
+                        "_height": 94,
+                        "_left": 0,
+                        "_opacity": 1,
+                        "_top": 0,
+                        "_width": 94,
+                        "children": {
+                          "address": 1799856806264,
+                          "pythonObjectTypeName": "PyChildrenList"
+                        }
+                      },
+                      "children": [
+                        {
+                          "pythonObjectAddress": 1800110319992,
+                          "pythonObjectTypeName": "Sprite",
+                          "dictEntriesOfInterest": {
+                            "_color": {
+                              "aPercent": 10,
+                              "bPercent": 100,
+                              "gPercent": 100,
+                              "rPercent": 100
+                            },
+                            "_displayHeight": 96,
+                            "_displayWidth": 96,
+                            "_displayX": {
+                              "int": 4294967295,
+                              "int_low32": -1
+                            },
+                            "_displayY": {
+                              "int": 4294967295,
+                              "int_low32": -1
+                            },
+                            "_height": 96,
+                            "_left": 0,
+                            "_name": "circle",
+                            "_texturePath": "res:/UI/Texture/classes/Target/outerCircle.png",
+                            "_top": 0,
+                            "_width": 96
+                          }
+                        },
+                        {
+                          "pythonObjectAddress": 1800110318144,
+                          "pythonObjectTypeName": "Container",
+                          "dictEntriesOfInterest": {
+                            "_displayHeight": 1,
+                            "_displayWidth": 1,
+                            "_displayX": 47,
+                            "_displayY": 47,
+                            "_height": 1,
+                            "_left": 0,
+                            "_name": "lines",
+                            "_opacity": 0.1,
+                            "_top": 0,
+                            "_width": 1,
+                            "children": {
+                              "address": 1800110317920,
+                              "pythonObjectTypeName": "PyChildrenList"
+                            }
+                          },
+                          "children": [
+                            {
+                              "pythonObjectAddress": 1800110319264,
+                              "pythonObjectTypeName": "TargetLine",
+                              "dictEntriesOfInterest": {
+                                "_displayHeight": {
+                                  "int": 1799591297751,
+                                  "int_low32": 727
+                                },
+                                "_displayWidth": 1,
+                                "_displayX": 0,
+                                "_displayY": {
+                                  "int": 4607182423094983933,
+                                  "int_low32": -771
+                                },
+                                "_height": {
+                                  "int": 4724213586056970967,
+                                  "int_low32": 727
+                                },
+                                "_left": 0,
+                                "_name": "linetop",
+                                "_top": {
+                                  "int": 1803886263549,
+                                  "int_low32": -771
+                                },
+                                "_width": 1
+                              }
+                            },
+                            {
+                              "pythonObjectAddress": 1800110318592,
+                              "pythonObjectTypeName": "TargetLine",
+                              "dictEntriesOfInterest": {
+                                "_displayHeight": 1,
+                                "_displayWidth": {
+                                  "int": 1799591298048,
+                                  "int_low32": 1024
+                                },
+                                "_displayX": {
+                                  "int": 4783587591913995220,
+                                  "int_low32": -1068
+                                },
+                                "_displayY": {
+                                  "int": 4294967295,
+                                  "int_low32": -1
+                                },
+                                "_height": 1,
+                                "_left": {
+                                  "int": 4607182423094983636,
+                                  "int_low32": -1068
+                                },
+                                "_name": "lineleft",
+                                "_top": {
+                                  "int": 4294967295,
+                                  "int_low32": -1
+                                },
+                                "_width": {
+                                  "int": 4775190333849863168,
+                                  "int_low32": 1024
+                                }
+                              }
+                            },
+                            {
+                              "pythonObjectAddress": 1800110321392,
+                              "pythonObjectTypeName": "TargetLine",
+                              "dictEntriesOfInterest": {
+                                "_displayHeight": 1,
+                                "_displayWidth": {
+                                  "int": 1799591298048,
+                                  "int_low32": 1024
+                                },
+                                "_displayX": 46,
+                                "_displayY": {
+                                  "int": 4294967295,
+                                  "int_low32": -1
+                                },
+                                "_height": 1,
+                                "_left": 46,
+                                "_name": "lineright",
+                                "_top": {
+                                  "int": 4294967295,
+                                  "int_low32": -1
+                                },
+                                "_width": {
+                                  "int": 1799591298048,
+                                  "int_low32": 1024
+                                }
+                              }
+                            },
+                            {
+                              "pythonObjectAddress": 1800110318368,
+                              "pythonObjectTypeName": "TargetLine",
+                              "dictEntriesOfInterest": {
+                                "_displayHeight": {
+                                  "int": 4607182418800018135,
+                                  "int_low32": 727
+                                },
+                                "_displayWidth": 1,
+                                "_displayX": 0,
+                                "_displayY": 46,
+                                "_height": {
+                                  "int": 1799591297751,
+                                  "int_low32": 727
+                                },
+                                "_left": 0,
+                                "_name": "linebottom",
+                                "_top": 46,
+                                "_width": 1
+                              }
+                            }
+                          ]
+                        }
+                      ]
                     }
                   ]
                 },

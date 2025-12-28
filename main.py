@@ -13,7 +13,7 @@ class EveRealTimeUI:
         self.running = True
         
         self.root = tk.Tk()
-        self.root.title("EVE Radar: Targets & Click Points")
+        self.root.title("EVE Radar: Targets & Debug Mode")
         self.root.geometry("1100x850")
         self.root.configure(bg='#0a0a0a')
 
@@ -25,7 +25,7 @@ class EveRealTimeUI:
         
         self.status_label = tk.Label(
             self.status_frame, 
-            text="Initializing...", 
+            text="Initializing debug mode...", 
             fg="#00ccff", bg="#111111", 
             font=("Consolas", 10), justify=tk.LEFT, anchor="w",
             padx=15, pady=10
@@ -34,8 +34,7 @@ class EveRealTimeUI:
         
         self.scale = 0.6
         self.current_modules = {}
-        # Словарь объектов целей: {address: {"name": str, "x": int, "y": int}}
-        self.current_targets = {}
+        self.current_targets = {} 
         self.is_locked = False
 
     def clean_html(self, raw_html):
@@ -72,7 +71,6 @@ class EveRealTimeUI:
         lx, ly = v(ei.get('_displayX')), v(ei.get('_displayY'))
         w, h = v(ei.get('_displayWidth')), v(ei.get('_displayHeight'))
         
-        # Абсолютные координаты в окне игры
         ax, ay = px + lx, py + ly
         obj_type = node.get('pythonObjectTypeName', '')
         obj_addr = node.get('pythonObjectAddress', id(node))
@@ -86,7 +84,6 @@ class EveRealTimeUI:
             is_important = False
             label_text = name
 
-            # --- МОДУЛИ ---
             if obj_type == "ShipSlot":
                 is_important = True
                 active = False
@@ -98,27 +95,17 @@ class EveRealTimeUI:
                 self.current_modules[name] = "ACTIVE" if active else "READY"
                 color = "#00ff00" if active else "#ffcc00"
 
-            # --- ЦЕЛИ ---
             elif obj_type in ["TargetInBar", "TargetInActive"]:
                 self.is_locked = True
                 is_important = True
                 color = "#ffffff"
-                
                 t_name = self.find_target_name(node) or "Target"
                 
-                # Рассчитываем центр контейнера для клика (в игровых координатах)
-                center_x = ax + (w / 2)
-                center_y = ay + (h / 2)
-                
-                self.current_targets[obj_addr] = {
-                    "name": t_name,
-                    "x": int(center_x),
-                    "y": int(center_y)
-                }
-                label_text = f"{t_name} ({int(center_x)},{int(center_y)})"
+                cx, cy = ax + (w / 2), ay + (h / 2)
+                self.current_targets[obj_addr] = {"name": t_name, "x": int(cx), "y": int(cy)}
+                label_text = f"{t_name} [{int(cx)},{int(cy)}]"
 
-            # Отрисовка на радаре
-            if is_important or (w > 15 and h > 15):
+            if is_important or (w > 20 and h > 20):
                 self.canvas.create_rectangle(x1, y1, x2, y2, outline=color, width=1)
                 if is_important:
                     self.canvas.create_text(x1, y1-2, text=label_text, fill=color, 
@@ -132,7 +119,6 @@ class EveRealTimeUI:
         try:
             data = self.queue.get_nowait()
             self.canvas.delete("all")
-            
             self.current_modules = {}
             self.current_targets = {} 
             self.is_locked = False
@@ -143,11 +129,9 @@ class EveRealTimeUI:
             if self.is_locked:
                 report.append(f"!!! TARGETS LOCKED: {len(self.current_targets)} !!!")
                 for addr, info in self.current_targets.items():
-                    # Выводим имя и координаты центра для каждой цели
-                    report.append(f" > {info['name'].ljust(15)} @ [X:{info['x']} Y:{info['y']}]")
-                report.append("")
-                # Диагностика в консоль (можно использовать для автокликера)
-                # print(f"Targets: {self.current_targets}")
+                    report.append(f" > {info['name'].ljust(15)} @ X:{info['x']} Y:{info['y']}")
+                # ПЕЧАТЬ КООРДИНАТ В КОНСОЛЬ ДЛЯ ТЕСТА
+                print(f"[Debug] Targets online: {len(self.current_targets)} units")
             else:
                 report.append("[ No Targets Locked ]\n")
             
@@ -168,30 +152,40 @@ class EveRealTimeUI:
             self.root.after(30, self.update_gui)
 
     def reader_loop(self):
-        print(f"[Python] Connecting to {self.exe_path}...")
+        print(f"[Python-Diag] Запуск процесса: {self.exe_path}")
         process = subprocess.Popen(
             [self.exe_path, "-remove-other-dict-entries"], 
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding='utf-8', errors='replace', bufsize=10**7
         )
 
+        # ВЕРНУЛ: Чтение ошибок/логов из Go (Stderr)
         def log_reader(pipe):
             for line in pipe:
                 sys.stderr.write(f"  [Go-Log]: {line}")
                 sys.stderr.flush()
-        
         threading.Thread(target=log_reader, args=(process.stderr,), daemon=True).start()
 
         while self.running:
             line = process.stdout.readline()
-            if not line: break
-            line_stripped = line.strip()
-            if not line_stripped.startswith("{"): continue
+            if not line: 
+                print("[Python-Diag] Go-процесс закрыл поток (EOF)")
+                break
+            
+            line_s = line.strip()
+            if not line_s.startswith("{"):
+                if line_s: print(f"[Go-Stdout-Msg]: {line_s}")
+                continue
+
             try:
-                data = json.loads(line_stripped)
+                # ДИАГНОСТИКА: Печать размера каждого пакета в консоль
+                print(f"[Debug] Received JSON: {len(line_s) // 1024} KB")
+                data = json.loads(line_s)
                 if self.queue.full(): self.queue.get_nowait()
                 self.queue.put(data)
-            except: continue
+            except Exception as e:
+                print(f"[Python-Diag] Ошибка JSON: {e}")
+                continue
 
     def start(self):
         threading.Thread(target=self.reader_loop, daemon=True).start()
