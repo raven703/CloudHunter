@@ -1,3 +1,4 @@
+#reading memory with eveui.exe
 import json
 import subprocess
 import threading
