@@ -28,60 +28,36 @@ class EveApp:
         """Формирует отчет на основе объекта WorldState"""
         report = []
         
-        # 1. Логика навигации (расширенная)
+        # --- 1. Навигация ---
         if state.is_establishing:
-            warp_status = "ESTABLISHING WARP VECTOR"
-            warp_color = "#ffff00"  # Желтый
+            nav_status = "ESTABLISHING WARP VECTOR"
         elif state.is_warp:
-            warp_status = "WARP DRIVE ACTIVE"
-            warp_color = "#00ffff"  # Голубой
+            nav_status = "WARP DRIVE ACTIVE"
         else:
-            warp_status = "STATIONARY"
-            warp_color = "#ffffff"  # Белый
-
-        # Статус безопасности и корабля
+            nav_status = "STATIONARY"
+            
+        # --- 2. Безопасность ---
         safety = "!!! DANGER !!!" if state.hostiles_in_local else "SAFE"
+        report.append(f"STATUS: {safety} | {nav_status}")
         
-        # Первая строка отчета
-        report.append(f"STATUS: {safety} | {warp_status}")
+        # --- 3. Состояние корабля ---
         report.append(f"SHIP: SHIELD {state.shield_pct:.1f}% | ARMOR {state.armor_pct:.1f}%")
-        report.append(f"DRONES: {state.drones_in_space} in space" + (" [UNDER ATTACK]" if state.drones_under_attack else ""))
         
-        # Цели
+        # --- 4. Дроны (Новое!) ---
+        if state.drones_in_space > 0:
+            d_status = "IDLE" if state.drones_idle else "FIGHTING" if state.drones_fighting else "MIXED"
+            attack_warn = " [UNDER ATTACK]" if state.drones_under_attack else ""
+            report.append(f"DRONES: {state.drones_in_space} in space | {d_status}{attack_warn}")
+        else:
+            report.append("DRONES: No drones in space")
+        
+        # --- 5. Цели ---
         if state.targets:
             report.append(f"\n--- TARGETS ({len(state.targets)}) ---")
             for addr, info in state.targets.items():
-                report.append(f" > {info['name']} at {info['x']},{info['y']}")
+                report.append(f" > {info['name']} (UID: {str(addr)[-5:]})")
         
-        # Модули
-        if state.modules:
-            report.append("\n--- MODULES ---")
-            for m, s in sorted(state.modules.items()):
-                icon = "[FIRE]" if s == "ACTIVE" else "[ . ]"
-                report.append(f"{icon} {m}: {s}")
-        
-        # Обновляем цвет текста статуса навигации в label (опционально)
-        # Если хочешь, чтобы весь текст менял цвет при варпе, раскомментируй:
-        # self.status_label.config(fg=warp_color)
-                
-        return "\n".join(report)
-        """Формирует отчет на основе объекта WorldState"""
-        report = []
-        
-        # Статус безопасности и корабля
-        safety = "!!! DANGER !!!" if state.hostiles_in_local else "SAFE"
-        warp = "WARPING" if state.is_warp else "STATIONARY"
-        report.append(f"STATUS: {safety} | {warp}")
-        report.append(f"SHIP: SHIELD {state.shield_pct:.1f}% | ARMOR {state.armor_pct:.1f}%")
-        report.append(f"DRONES: {state.drones_in_space} in space" + (" [UNDER ATTACK]" if state.drones_under_attack else ""))
-        
-        # Цели
-        if state.targets:
-            report.append(f"\n--- TARGETS ({len(state.targets)}) ---")
-            for addr, info in state.targets.items():
-                report.append(f" > {info['name']} at {info['x']},{info['y']}")
-        
-        # Модули
+        # --- 6. Модули ---
         if state.modules:
             report.append("\n--- MODULES ---")
             for m, s in sorted(state.modules.items()):
@@ -116,11 +92,13 @@ class EveApp:
             # 4. Обновление текстовой диагностики
             self.status_label.config(text=self.generate_report(world_state))
             
-            # Подсветка фона при опасности
+            # Логика смены цветов фона
             if world_state.hostiles_in_local:
-                self.status_label.config(bg="#330000", fg="#ff5555")
+                self.status_label.config(bg="#440000", fg="#ff5555") # Тревожный красный
+            elif world_state.is_establishing or world_state.is_warp:
+                self.status_label.config(bg="#002233", fg="#00ccff") # Синий (в полете)
             else:
-                self.status_label.config(bg="#111111", fg="#00ccff")
+                self.status_label.config(bg="#111111", fg="#00ccff") # Обычный черный
 
         except Empty:
             pass
