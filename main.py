@@ -5,7 +5,6 @@ from client import EveClient
 from parser import EveParser
 from brain import EveBrain
 
-
 class EveApp:
     def __init__(self, exe_path):
         self.client = EveClient(exe_path)
@@ -38,27 +37,46 @@ class EveApp:
     def generate_report(self, state):
         report = []
 
-        # Логика безопасности
-        is_danger = state.hostiles_in_local or state.local_has_neutral
-        safety = "!!! DANGER !!!" if is_danger else "LOCAL SAFE"
+        # --- 1. Безопасность (Объединенная логика) ---
+        if state.hostiles_in_local or state.local_has_neutral:
+            safety = "!!! DANGER: HOSTILE/NEUTRAL IN LOCAL !!!"
+        else:
+            safety = "LOCAL SAFE"
         
-        # Навигация
+        # --- 2. Навигация ---
         if state.is_establishing:
-            nav = "WARP VECTOR"
+            nav = "ESTABLISHING WARP VECTOR"
         elif state.is_warp:
-            nav = "IN WARP"
+            nav = "WARP DRIVE ACTIVE"
         else:
             nav = "STATIONARY"
 
         report.append(f"STATUS: {safety} | {nav}")
+
+        # --- 3. Корабль ---
         report.append(f"SHIP: SHIELD {state.shield_pct:.1f}% | ARMOR {state.armor_pct:.1f}%")
-        
-        # Дроны
+
+        # --- 4. Дроны ---
         if state.drones_in_space > 0:
             d_status = "IDLE" if state.drones_idle else "FIGHTING" if state.drones_fighting else "MIXED"
-            report.append(f"DRONES: {state.drones_in_space} | {d_status}")
+            warn = " [UNDER ATTACK]" if state.drones_under_attack else ""
+            report.append(f"DRONES: {state.drones_in_space} | {d_status}{warn}")
         else:
-            report.append("DRONES: No drones")
+            report.append("DRONES: No drones in space")
+
+        # --- 5. Цели ---
+        if state.targets:
+            report.append(f"\n--- TARGETS ({len(state.targets)}) ---")
+            # Мы теперь используем id(node) как ключ, выведем просто количество или часть ID
+            for t_id in state.targets:
+                report.append(f" > Target Locked (ID: {str(t_id)[-5:]})")
+
+        # --- 6. Модули ---
+        if state.modules:
+            report.append("\n--- MODULES ---")
+            for m, s in sorted(state.modules.items()):
+                icon = "[FIRE]" if s == "ACTIVE" else "[ . ]"
+                report.append(f"{icon} {m}: {s}")
 
         return "\n".join(report)
 
@@ -73,17 +91,18 @@ class EveApp:
 
             def intersects(x, y):
                 for ox, oy in occupied_labels:
-                    if abs(x - ox) < 70 and abs(y - oy) < 14:
+                    if abs(x - ox) < 80 and abs(y - oy) < 15: # Немного увеличил отступ
                         return True
                 return False
 
-            for item in sorted(draw_list, key=lambda x: x.get("priority", 0), reverse=True):
+            # Сортируем по приоритету, чтобы важные рамки (цели) были сверху
+            for item in sorted(draw_list, key=lambda x: x.get("priority", 0)):
                 ax, ay, w, h = item["rect"]
                 x1, y1 = ax * self.scale, ay * self.scale
                 x2, y2 = (ax + w) * self.scale, (ay + h) * self.scale
 
                 self.canvas.create_rectangle(
-                    x1, y1, x2, y2, outline=item["color"]
+                    x1, y1, x2, y2, outline=item["color"], width=(2 if item.get("priority", 0) > 5 else 1)
                 )
 
                 label = item.get("label")
@@ -91,18 +110,19 @@ class EveApp:
                     tx, ty = x1 + 4, y1 + 4
                     if not intersects(tx, ty):
                         self.canvas.create_text(
-                            tx,
-                            ty,
+                            tx, ty,
                             text=label,
-                            fill="#7fdfff",
+                            fill="#7fdfff" if item["color"] != "#ffffff" else "#ffffff",
                             font=("Consolas", 9, "bold"),
                             anchor="nw"
                         )
                         occupied_labels.append((tx, ty))
 
+            # Обновление текста
             self.status_label.config(text=self.generate_report(world_state))
 
-            if world_state.hostiles_in_local:
+            # Цвет фона (Красный если опасность)
+            if world_state.hostiles_in_local or world_state.local_has_neutral:
                 self.status_label.config(bg="#440000", fg="#ff5555")
             elif world_state.is_establishing or world_state.is_warp:
                 self.status_label.config(bg="#002233", fg="#00ccff")
@@ -120,7 +140,6 @@ class EveApp:
         Thread(target=self.client.reader_loop, daemon=True).start()
         self.update_loop()
         self.root.mainloop()
-
 
 if __name__ == "__main__":
     app = EveApp("eveui.exe")
