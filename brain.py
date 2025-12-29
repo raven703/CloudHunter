@@ -43,12 +43,13 @@ class EveBrain:
     def emergency_exit(self, reason):
         """Логика экстренного отварпа"""
         print(f"[!!!] ЭКСТРЕННЫЙ ВЫХОД: {reason}")
+        print(f"[Brain] Кликаю отварп на safe1:")
         
         # Ищем координаты сейф-спота, которые сохранил парсер
-        safe_coords = self.current_state.bookmarks.get("safe1")
-        if safe_coords:
-            x, y = safe_coords
-            print(f"[Brain] Кликаю отварп на safe1: {x}, {y}")
-            # self.client.click(x, y)
-        else:
-            print("[Brain] Ошибка: Координаты safe1 не найдены в закладках!")
+        #safe_coords = self.current_state.bookmarks.get("safe1")
+        #if safe_coords:
+        #    x, y = safe_coords
+        #    print(f"[Brain] Кликаю отварп на safe1: {x}, {y}")
+        #    # self.client.click(x, y)
+        #else:
+        #    print("[Brain] Ошибка: Координаты safe1 не найдены в закладках!")
