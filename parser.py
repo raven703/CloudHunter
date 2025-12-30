@@ -40,7 +40,8 @@ class EveParser:
         return re.sub(self.cleaner, "", str(text)).strip()
 
     def get_val(self, val):
-        if isinstance(val, dict): return val.get("int_low32", 0)
+        if isinstance(val, dict):
+            return val.get("int_low32", 0)
         return val if isinstance(val, (int, float)) else 0
 
     def parse(self, root_node):
@@ -159,20 +160,52 @@ class EveParser:
     def _check_ship(self, node, ei, obj_type, name, state, draw_list, ax, ay, w, h):
         if obj_type == "ShipSlot":
             active = False
-            for c in node.get("children", []):
-                if "ramp_active" in str(c.get("dictEntriesOfInterest", {})):
+            # Проходим по детям слота
+            for c in node.get("children", []) or []:
+                child_ei = c.get("dictEntriesOfInterest", {})
+                
+                # 1. Проверяем по имени анимации активации
+                child_name = str(child_ei.get('_name', ''))
+                if "ramp_active" in child_name:
+                    # Проверяем, что этот объект действительно отображается (ширина > 0)
+                    if self.get_val(child_ei.get('_displayWidth')) > 0:
+                        active = True
+                        break
+                
+                # 2. Дополнительная проверка по текстуре (на случай, если имя не меняется)
+                texture = str(child_ei.get('_texturePath', '')).lower()
+                if "glow" in texture or "active" in texture:
                     active = True
+                    break
+
             state.modules[name] = "ACTIVE" if active else "READY"
+           # if "MediumSlot" in name:
+           #     print(f"Slot: {name}, Children count: {len(node.get('children', []))}")
+           #     for c in node.get('children', []):
+           #         print(f"  Child: {c.get('dictEntriesOfInterest', {}).get('_name')}")
+            
             draw_list.append({
                 "rect": (ax, ay, w, h),
                 "color": "#00ff00" if active else "#ffaa00",
                 "label": name,
                 "priority": 9
             })
+            
+        # Если это полоска жизни (Shield/Armor)
+        # Этот блок сработает для других узлов, когда рекурсия дойдет до них
         elif obj_type == "ShipHudSpriteGauge":
-            val = ei.get("_lastValue", 1.0) * 100
-            if "shieldGauge" in name: state.shield_pct = val
-            elif "armorGauge" in name: state.armor_pct = val
+            raw_val = ei.get("_lastValue", 1.0)
+            val = self.get_val(raw_val)
+            
+            # ВАЖНО: Добавь этот принт один раз, чтобы увидеть реальные цифры в консоли
+            # print(f"DEBUG HP: {name} raw={raw_val} val={val}")
+            
+            percent = float(val) * 100
+            
+            if "shieldGauge" in name:
+                state.shield_pct = percent
+            elif "armorGauge" in name:
+                state.armor_pct = percent
 
     def _check_frames(self, obj_type, name, w, h, draw_list, ax, ay):
         area = w * h
