@@ -15,6 +15,12 @@ class WorldState:
         self.drones_fighting = False
         self.drones_under_attack = False
 
+        # Списки для целей из овервью
+        self.npc_all = []
+        self.npc_frigate = []
+        self.npc_battleship = []
+        self.npc_cruiser = []
+
 class EveParser:
     def __init__(self):
         self.cleaner = re.compile("<.*?>")
@@ -58,6 +64,9 @@ class EveParser:
         w, h = self.get_val(ei.get('_displayWidth')), self.get_val(ei.get('_displayHeight'))
         ax, ay = px + lx, py + ly
 
+        # 2. ВЫЗОВ НОВОЙ ПРОВЕРКИ OVERVIEW
+        self._check_overview(node, ei, obj_type, state, draw_list, ax, ay, w, h)
+
         # Вызовы узкоспециализированных проверок
         self._check_navigation(txt, state)
         self._check_drones(node, ei, name, txt, state)
@@ -68,6 +77,61 @@ class EveParser:
 
         for c in node.get("children", []) or ei.get("children", []):
             self._walk(c, ax, ay, state, draw_list)
+
+
+
+    def _check_overview(self, node, ei, obj_type, state, draw_list, ax, ay, w, h):
+        """
+        Воссоздаем логику: если текущий узел - SpaceObjectIcon, 
+        проверяем его содержимое на наличие 'npc'
+        """
+        if obj_type == 'SpaceObjectIcon':
+            # Ищем 'npc' внутри данных текущего узла (ei) 
+            # или заглядываем в его детей (как твой findall_kv)
+            found_npc = False
+            classification = "NPC"
+            
+            # Проверяем все записи в текущем словаре интереса
+            # (Эквивалент проверки всех key/value в найденном elem_dict)
+            node_data_to_check = []
+            node_data_to_check.append(ei)
+            
+            # Добавляем данные детей, так как в твоем коде 'npc' сидел глубже на 4 уровня
+            for child in node.get('children', []):
+                node_data_to_check.append(child.get('dictEntriesOfInterest', {}))
+                # Можно копнуть глубже, если npc сидит еще дальше
+                for sub_child in child.get('children', []):
+                    node_data_to_check.append(sub_child.get('dictEntriesOfInterest', {}))
+
+            for data_block in node_data_to_check:
+                for val in data_block.values():
+                    v_str = str(val).lower()
+                    if 'npc' in v_str:
+                        found_npc = True
+                        # Классификация
+                        if 'npcfrigate' in v_str: classification = "FRIGATE"
+                        elif 'npcbattleship' in v_str: classification = "BATTLESHIP"
+                        elif 'npccruiser' in v_str: classification = "CRUISER"
+                        break
+                if found_npc: break
+
+            if found_npc:
+                coords = (ax + w/2, ay + h/2)
+                state.npc_all.append(coords)
+                
+                # Сохраняем в специфические списки
+                if classification == "FRIGATE": state.npc_frigate.append(coords)
+                elif classification == "BATTLESHIP": state.npc_battleship.append(coords)
+                elif classification == "CRUISER": state.npc_cruiser.append(coords)
+
+                draw_list.append({
+                    "rect": (ax, ay, w, h),
+                    "color": "#ff3333",
+                    "priority": 15,
+                    "label": classification
+                })
+
+
 
     def _check_local(self, ei, obj_type, state):
         """Проверка безопасности в локале"""
