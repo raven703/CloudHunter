@@ -78,60 +78,48 @@ class EveParser:
         for c in node.get("children", []) or ei.get("children", []):
             self._walk(c, ax, ay, state, draw_list)
 
-
-
     def _check_overview(self, node, ei, obj_type, state, draw_list, ax, ay, w, h):
-        """
-        Воссоздаем логику: если текущий узел - SpaceObjectIcon, 
-        проверяем его содержимое на наличие 'npc'
-        """
-        if obj_type == 'SpaceObjectIcon':
-            # Ищем 'npc' внутри данных текущего узла (ei) 
-            # или заглядываем в его детей (как твой findall_kv)
-            found_npc = False
-            classification = "NPC"
-            
-            # Проверяем все записи в текущем словаре интереса
-            # (Эквивалент проверки всех key/value в найденном elem_dict)
-            node_data_to_check = []
-            node_data_to_check.append(ei)
-            
-            # Добавляем данные детей, так как в твоем коде 'npc' сидел глубже на 4 уровня
-            for child in node.get('children', []):
-                node_data_to_check.append(child.get('dictEntriesOfInterest', {}))
-                # Можно копнуть глубже, если npc сидит еще дальше
-                for sub_child in child.get('children', []):
-                    node_data_to_check.append(sub_child.get('dictEntriesOfInterest', {}))
-
-            for data_block in node_data_to_check:
-                for val in data_block.values():
-                    v_str = str(val).lower()
-                    if 'npc' in v_str:
-                        found_npc = True
-                        # Классификация
-                        if 'npcfrigate' in v_str: classification = "FRIGATE"
-                        elif 'npcbattleship' in v_str: classification = "BATTLESHIP"
-                        elif 'npccruiser' in v_str: classification = "CRUISER"
-                        break
-                if found_npc: break
-
-            if found_npc:
-                coords = (ax + w/2, ay + h/2)
-                state.npc_all.append(coords)
+            if obj_type == 'SpaceObjectIcon':
+                found_npc = False
+                ship_type = "NPC"
                 
-                # Сохраняем в специфические списки
-                if classification == "FRIGATE": state.npc_frigate.append(coords)
-                elif classification == "BATTLESHIP": state.npc_battleship.append(coords)
-                elif classification == "CRUISER": state.npc_cruiser.append(coords)
+                # Сканируем данные узла и его прямых детей на наличие 'npc'
+                data_to_scan = [ei]
+                for child in node.get('children', []) or []:
+                    data_to_scan.append(child.get('dictEntriesOfInterest', {}))
 
-                draw_list.append({
-                    "rect": (ax, ay, w, h),
-                    "color": "#ff3333",
-                    "priority": 15,
-                    "label": classification
-                })
+                for data_block in data_to_scan:
+                    for val in data_block.values():
+                        v_str = str(val).lower()
+                        if 'npc' in v_str:
+                            found_npc = True
+                            if 'npcfrigate' in v_str: 
+                                ship_type = "FRIGATE"
+                            elif 'npcbattleship' in v_str: 
+                                ship_type = "BATTLESHIP"
+                            elif 'npccruiser' in v_str: 
+                                ship_type = "CRUISER"
+                            break
+                    if found_npc: break
 
+                if found_npc:
+                    coords = (ax + w/2, ay + h/2)
+                    state.npc_all.append(coords)
+                    
+                    # Наполняем только выбранные списки
+                    if ship_type == "FRIGATE": 
+                        state.npc_frigate.append(coords)
+                    elif ship_type == "BATTLESHIP": 
+                        state.npc_battleship.append(coords)
+                    elif ship_type == "CRUISER": 
+                        state.npc_cruiser.append(coords)
 
+                    draw_list.append({
+                        "rect": (ax, ay, w, h),
+                        "color": "#ff3333",
+                        "priority": 15,
+                        "label": ship_type
+                    })
 
     def _check_local(self, ei, obj_type, state):
         """Проверка безопасности в локале"""

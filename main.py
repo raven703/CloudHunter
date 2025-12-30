@@ -77,6 +77,13 @@ class EveApp:
             for m, s in sorted(state.modules.items()):
                 icon = "[FIRE]" if s == "ACTIVE" else "[ . ]"
                 report.append(f"{icon} {m}: {s}")
+        
+        if state.npc_all:
+            report.append(f"\n--- OVERVIEW NPC ({len(state.npc_all)}) ---")
+            if state.npc_frigate: report.append(f" > Frigates: {len(state.npc_frigate)}")
+            if state.npc_cruiser: report.append(f" > Cruisers: {len(state.npc_cruiser)}")
+            if state.npc_battleship: report.append(f" > Battleships: {len(state.npc_battleship)}")
+            
 
         return "\n".join(report)
 
