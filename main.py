@@ -48,6 +48,8 @@ class EveApp:
             nav = "ESTABLISHING WARP VECTOR"
         elif state.is_warp:
             nav = "WARP DRIVE ACTIVE"
+        elif state.is_orbiting:
+            nav = "ORBITING"
         else:
             nav = "STATIONARY"
 

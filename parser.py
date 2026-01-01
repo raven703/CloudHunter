@@ -20,6 +20,8 @@ class WorldState:
         self.npc_frigate = []
         self.npc_battleship = []
         self.npc_cruiser = []
+        # Добавляем статус орбиты
+        self.is_orbiting = False  
 
 class EveParser:
     def __init__(self):
@@ -147,6 +149,7 @@ class EveParser:
     def _check_navigation(self, txt, state):
         if "Establishing Warp Vector" in txt: state.is_establishing = True
         elif "Warp Drive Active" in txt: state.is_warp = True
+        elif "Orbiting" in txt: state.is_orbiting = True
 
     def _check_drones(self, node, ei, name, txt, state):
         if "Drones in Space" in txt:
