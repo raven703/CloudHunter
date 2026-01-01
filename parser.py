@@ -1,27 +1,31 @@
 import re
+from dataclasses import dataclass, field
+from typing import List, Dict
 
+@dataclass
 class WorldState:
-    def __init__(self):
-        self.shield_pct = 100.0
-        self.armor_pct = 100.0
-        self.is_warp = False
-        self.is_establishing = False
-        self.hostiles_in_local = False
-        self.local_has_neutral = False
-        self.modules = {}
-        self.targets = {}
-        self.drones_in_space = 0
-        self.drones_idle = False
-        self.drones_fighting = False
-        self.drones_under_attack = False
+    shield_pct: float = 100.0
+    armor_pct: float = 100.0
+    is_warp: bool = False
+    is_establishing: bool = False
+    is_orbiting: bool = False
+    hostiles_in_local: bool = False
+    local_has_neutral: bool = False
+    
+    # Для изменяемых типов (dict, list) в dataclass используется default_factory
+    modules: Dict[str, str] = field(default_factory=dict)
+    targets: Dict[int, dict] = field(default_factory=dict)
+    
+    drones_in_space: int = 0
+    drones_idle: bool = False
+    drones_fighting: bool = False
+    drones_under_attack: bool = False
 
-        # Списки для целей из овервью
-        self.npc_all = []
-        self.npc_frigate = []
-        self.npc_battleship = []
-        self.npc_cruiser = []
-        # Добавляем статус орбиты
-        self.is_orbiting = False  
+    # Списки NPC
+    npc_all: List[tuple] = field(default_factory=list)
+    npc_frigate: List[tuple] = field(default_factory=list)
+    npc_battleship: List[tuple] = field(default_factory=list)
+    npc_cruiser: List[tuple] = field(default_factory=list)
 
 class EveParser:
     def __init__(self):
