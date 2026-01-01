@@ -37,34 +37,39 @@ class EveApp:
     def generate_report(self, state):
         report = []
 
-        # --- 1. Безопасность (Объединенная логика) ---
-        if state.hostiles_in_local or state.local_has_neutral:
-            safety = "!!! DANGER: HOSTILE/NEUTRAL IN LOCAL !!!"
-        else:
-            safety = "LOCAL SAFE"
+# --- БЕЗОПАСНОСТЬ И НАВИГАЦИЯ ---
+        # Было: if-elif. Стало: match-case
+        match (state.hostiles_in_local or state.local_has_neutral):
+            case True:  safety = "!!! DANGER: HOSTILE/NEUTRAL IN LOCAL !!!"
+            case False: safety = "LOCAL SAFE"
         
         # --- 2. Навигация ---
-        if state.is_establishing:
-            nav = "ESTABLISHING WARP VECTOR"
-        elif state.is_warp:
-            nav = "WARP DRIVE ACTIVE"
-        elif state.is_orbiting:
-            nav = "ORBITING"
-        else:
-            nav = "STATIONARY"
+        match True:
+            case state.is_establishing:
+                nav = "ESTABLISHING WARP VECTOR"
+            case state.is_warp:
+                nav = "WARP DRIVE ACTIVE"
+            case state.is_orbiting:
+                nav = "ORBITING"
+            case _:
+                nav = "STATIONARY"
 
         report.append(f"STATUS: {safety} | {nav}")
-
         # --- 3. Корабль ---
         report.append(f"SHIP: SHIELD {state.shield_pct:.1f}% | ARMOR {state.armor_pct:.1f}%")
 
-        # --- 4. Дроны ---
-        if state.drones_in_space > 0:
-            d_status = "IDLE" if state.drones_idle else "FIGHTING" if state.drones_fighting else "MIXED"
-            warn = " [UNDER ATTACK]" if state.drones_under_attack else ""
-            report.append(f"DRONES: {state.drones_in_space} | {d_status}{warn}")
-        else:
-            report.append("DRONES: No drones in space")
+# --- ДРОНЫ ---
+        # Используем сопоставление кортежа (idle, fighting)
+        match state.drones_in_space:
+            case 0:
+                report.append("DRONES: No drones in space")
+            case n:
+                match (state.drones_idle, state.drones_fighting):
+                    case (True, False): d_status = "IDLE"
+                    case (False, True): d_status = "FIGHTING"
+                    case _:             d_status = "MIXED"
+                warn = " [UNDER ATTACK]" if state.drones_under_attack else ""
+                report.append(f"DRONES: {n} | {d_status}{warn}")
 
         # --- 5. Цели ---
         if state.targets:
@@ -82,9 +87,12 @@ class EveApp:
         
         if state.npc_all:
             report.append(f"\n--- OVERVIEW NPC ({len(state.npc_all)}) ---")
-            if state.npc_frigate: report.append(f" > Frigates: {len(state.npc_frigate)}")
-            if state.npc_cruiser: report.append(f" > Cruisers: {len(state.npc_cruiser)}")
-            if state.npc_battleship: report.append(f" > Battleships: {len(state.npc_battleship)}")
+            npc_types = [("Frigates", state.npc_frigate), 
+                         ("Cruisers", state.npc_cruiser), 
+                         ("Battleships", state.npc_battleship)]
+            for name, collection in npc_types:
+                if collection:
+                    report.append(f" > {name}: {len(collection)}")
             
 
         return "\n".join(report)
