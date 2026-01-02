@@ -9,7 +9,7 @@ import win32api
 import win32con
 import sys
 import os
-import importlib
+
 
 # Твои рабочие модули
 from client import EveClient
@@ -40,6 +40,11 @@ class DebugWindow(tk.Toplevel):
 
 class EveApp:
     def __init__(self, exe_path):
+        # Перехватываем и ошибки, и обычный вывод        
+        self.stderr_redirector = WidgetLogger(self.log_safe)
+        sys.stderr = self.stderr_redirector
+        sys.stdout = self.stderr_redirector  # ДОБАВЬ ЭТУ СТРОКУ
+
         self.root = tk.Tk()
         self.root.title("EVE Pilot Panel")
         
@@ -121,7 +126,11 @@ class EveApp:
         opts_frame.pack(fill=tk.X)
         
         self.mode_var = tk.BooleanVar(value=False)
-        self.mode_check = tk.Checkbutton(opts_frame, text="Mode: DRONES (On/Off)", variable=self.mode_var, command=self.on_mode_change, bg='#1a1a1a', fg='#00ffaa', selectcolor='black', activebackground='#1a1a1a', activeforeground='#00ffaa')
+        self.mode_check = tk.Checkbutton(opts_frame, text="Mode: DRONES (On/Off)", variable=self.mode_var,
+                                        command=self.on_mode_change,
+                                        bg='#1a1a1a', fg='#00ffaa',
+                                        selectcolor='black', activebackground='#1a1a1a',
+                                        activeforeground='#00ffaa')
         self.mode_check.pack(anchor="w")
         
         self.debug_var = tk.BooleanVar(value=False)

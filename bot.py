@@ -1,15 +1,19 @@
+
+
 class EveBot:
     def __init__(self):
         self.current_state = None
         self.config_mode = "drones"  # Выбор пользователя: "guns" или "drones"
+        self.use_drones = False 
 
     def set_config_mode(self, mode):
         """Вызывается из GUI при нажатии кнопок"""
         if mode in ["guns", "drones"]:
             self.config_mode = mode
 
-    def think(self, state):
+    def think(self, state, use_drones: bool):
         self.current_state = state
+        self.use_drones = use_drones
 
         # 1. ПРИОРИТЕТ: БЕЗОПАСНОСТЬ
         if state.hostiles_in_local or state.local_has_neutral:
@@ -26,13 +30,13 @@ class EveBot:
         # 3. БОЕВАЯ ЛОГИКА
         if state.targets:
             # Используем match-case для выбора метода боя
-            match self.config_mode:
-                case "guns":
-                    state.combat_mode_active = "GUNS"
-                    self._logic_guns()
-                case "drones":
+            match self.use_drones:
+                case True:
                     state.combat_mode_active = "DRONES"
                     self._logic_drones()
+                case False:
+                    state.combat_mode_active = "GUNS"
+                    self._logic_guns()
         else:
             state.combat_mode_active = "SCANNING"
             self.pve_scan_logic()
@@ -48,6 +52,7 @@ class EveBot:
     def _logic_drones(self):
         """Логика управления дронами"""
         state = self.current_state
+        print('drones started')
         if state.drones_in_space < 5: # Если не все дроны выпущены
              print("[Bot] LAUNCH DRONES")
         
@@ -56,6 +61,7 @@ class EveBot:
 
     def pve_scan_logic(self):
         """Поиск целей"""
+        print(f"[Bot] SCANNING for targets...")
         pass
 
     def emergency_exit(self, reason):
