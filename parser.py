@@ -181,87 +181,71 @@ class EveParser:
             if self.get_val(ei.get("_displayWidth")) > 2: 
                 state.drones_under_attack = True
 
+    def _check_armor_repairer(self, node):
+        """Прямая проверка текстуры иконки внутри ModuleButton"""
+        rep_texture = "res:/ui/texture/icons/1_64_11.png"
+        
+        # Проходим по детям ShipSlot (ищем ModuleButton)
+        for child_button in node.get("children", []) or []:
+            # Проходим по детям ModuleButton (ищем Icon)
+            for sub_child in child_button.get("children", []) or []:
+                sei = sub_child.get('dictEntriesOfInterest', {})
+                if str(sei.get('_texturePath')) == rep_texture:
+                    return True
+        return False
+        
+        # Рекурсия по детям
+        for c in node.get("children", []) or []:
+            if self._check_armor_repairer(c):
+                print(f"DEBUG: Found target {val} in field {field}") # Раскомментируй для проверки в консоли
+                return True
+            else:
+                print(f"no repair")
+        return False
+
     def _check_ship(self, node, ei, obj_type, name, state, draw_list, ax, ay, w, h):
         if obj_type == "ShipSlot":
             active = False
-            is_repairer = False
-            # Собираем всё, что может содержать название модуля
-            # 1. Тултип самого слота
-            # 2. Текст дочерних объектов (иконки/лейбла)
-            # 3. Названия текстур (иногда там есть id модуля)
+            # Проверяем на репку по твоей структуре
+            is_repairer = self._check_armor_repairer(node)
             
-            search_area = str(ei.get('_toolTip', '')).lower() + str(ei.get('_name', '')).lower()
-            # Проверяем детей для более глубокого поиска названия
-            for c in node.get("children", []) or []:
-                cei = c.get("dictEntriesOfInterest", {})
-                search_area += str(cei.get('_text', '')).lower()
-                search_area += str(cei.get('_label', '')).lower()
-                search_area += str(cei.get('_texturePath', '')).lower()
-
-# Параллельно проверяем активность (твой рабочий код)
-                c_name = str(cei.get('_name', ''))
-                if "ramp_active" in c_name:
-                    if self.get_val(cei.get('_displayWidth')) > 0:
-                        active = True
+            # Ищем ModuleButton среди детей, чтобы проверить активацию
+            for child in node.get("children", []) or []:
+                cei = child.get("dictEntriesOfInterest", {})
                 
-                texture = str(cei.get('_texturePath', '')).lower()
-                if "glow" in texture or "active" in texture:
-                    active = True
-
-            # Проверка на репку (можно добавить 'rep' для краткости, если 'armor repairer' не ловится)
-            if "armor repairer" in search_area:
-                is_repairer = True
-
-            # Проходим по детям слота (иконку и анимацию активации)
-            for c in node.get("children", []) or []:
-                child_ei = c.get("dictEntriesOfInterest", {})
-                # Если в репку тултипе не нашли, ищем в тексте дочерних элементов
-                if not is_repairer:
-                    child_text = str(child_ei.get('_text', '')).lower()
-                    if "armor repairer" in child_text:
-                        is_repairer = True
-                
-                # 1. Проверяем по имени анимации активации
-                child_name = str(child_ei.get('_name', ''))
-                if "ramp_active" in child_name:
-                    # Проверяем, что этот объект действительно отображается (ширина > 0)
-                    if self.get_val(child_ei.get('_displayWidth')) > 0:
-                        active = True
-                        break
-                
-                # 2. Дополнительная проверка по текстуре (на случай, если имя не меняется)
-                texture = str(child_ei.get('_texturePath', '')).lower()
-                if "glow" in texture or "active" in texture:
+                # 1. Проверка через ramp_active (как в твоем дампе)
+                if cei.get("ramp_active") is True:
                     active = True
                     break
-            # Записываем общие данные по модулям           
-            state.modules[name] = "ACTIVE" if active else "READY"
+                
+                # 2. Твоя старая проверка по имени/ширине для подстраховки
+                c_name = str(cei.get('_name', ''))
+                if "ramp_active" in c_name and self.get_val(cei.get('_displayWidth')) > 0:
+                    active = True
+                    break
+
+            # Фиксируем состояние в WorldState
+            status = "ACTIVE" if active else "READY"
+            state.modules[name] = status
             if is_repairer:
-                state.repairers[name] = "ACTIVE" if active else "READY"
-   
-            
+                state.repairers[name] = status
+
+            # Цвет для Debug HUD: Розовый для репки, Зеленый для активных, Оранжевый для готовых
+            color = "#ff00ff" if is_repairer else ("#00ff00" if active else "#ffaa00")
             draw_list.append({
                 "rect": (ax, ay, w, h),
-                "color": "#00ff00" if active else "#ffaa00",
-                "label": name,
-                "priority": 9
+                "color": color,
+                "label": f"REP:{name[-1]}" if is_repairer else name,
+                "priority": 10
             })
-            
-        # Если это полоска жизни (Shield/Armor)
-        # Этот блок сработает для других узлов, когда рекурсия дойдет до них
+
         elif obj_type == "ShipHudSpriteGauge":
+            # Твоя логика HP остается без изменений
             raw_val = ei.get("_lastValue", 1.0)
             val = self.get_val(raw_val)
-            
-            # ВАЖНО: Добавь этот принт один раз, чтобы увидеть реальные цифры в консоли
-            # print(f"DEBUG HP: {name} raw={raw_val} val={val}")
-            
             percent = float(val) * 100
-            
-            if "shieldGauge" in name:
-                state.shield_pct = percent
-            elif "armorGauge" in name:
-                state.armor_pct = percent
+            if "shieldGauge" in name: state.shield_pct = percent
+            elif "armorGauge" in name: state.armor_pct = percent
 
     def _check_frames(self, obj_type, name, w, h, draw_list, ax, ay):
         area = w * h
