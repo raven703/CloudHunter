@@ -28,6 +28,7 @@ class WorldState:
     npc_frigate: List[tuple] = field(default_factory=list)
     npc_battleship: List[tuple] = field(default_factory=list)
     npc_cruiser: List[tuple] = field(default_factory=list)
+    npc_battlecruiser: List[tuple] = field(default_factory=list)
 
 class EveParser:
     def __init__(self):
@@ -108,6 +109,8 @@ class EveParser:
                                 ship_type = "BATTLESHIP"
                             elif 'npccruiser' in v_str: 
                                 ship_type = "CRUISER"
+                            elif 'npcbattlecruiser' in v_str: 
+                                ship_type = "BATTLECRUISER"    
                             break
                     if found_npc: break
 
@@ -122,7 +125,8 @@ class EveParser:
                         state.npc_battleship.append(coords)
                     elif ship_type == "CRUISER": 
                         state.npc_cruiser.append(coords)
-
+                    elif ship_type == "BATTLECRUISER": 
+                        state.npc_battlecruiser.append(coords)
                     draw_list.append({
                         "rect": (ax, ay, w, h),
                         "color": "#ff3333",

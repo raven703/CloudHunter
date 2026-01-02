@@ -7,13 +7,14 @@ import win32gui
 import win32process
 import win32api
 import win32con
+import sys
+import os
+import importlib
 
 # Твои рабочие модули
 from client import EveClient
 from parser import EveParser
 from bot import EveBot
-
-import sys
 
 class WidgetLogger:
     def __init__(self, callback):
@@ -21,7 +22,6 @@ class WidgetLogger:
 
     def write(self, string):
         if string.strip():
-            # Отправляем текст в метод логирования через after (потокобезопасно)
             self.callback(string.strip())
 
     def flush(self):
@@ -40,19 +40,9 @@ class DebugWindow(tk.Toplevel):
 
 class EveApp:
     def __init__(self, exe_path):
-        self.client = EveClient(exe_path)
-        self.parser = EveParser()
-        self.bot = EveBot()
-        
-        self.running = False
-        self.game_hwnd = None
-        self.last_game_width = 1024
-
-        # GUI
         self.root = tk.Tk()
         self.root.title("EVE Pilot Panel")
         
-        # Позиционирование пульта справа
         win_w, win_h = 400, 850
         screen_w = self.root.winfo_screenwidth()
         self.root.geometry(f"{win_w}x{win_h}+{screen_w - win_w}+{10}")
@@ -61,29 +51,34 @@ class EveApp:
         self.build_ui()
         self.debug_window = DebugWindow(self.root)
 
-        # 1. Создаем перехватчик, передаем ему наш метод log_safe
         self.stderr_redirector = WidgetLogger(self.log_safe)
-        
-        # 2. ПОДМЕНЯЕМ системный stderr
-        # Теперь все sys.stderr.write из твоего клиента полетят в окно лога
         sys.stderr = self.stderr_redirector
-        
-        # 3. Инициализируем клиент (уже после подмены)
+
         self.client = EveClient(exe_path)
+        self.parser = EveParser()
+        self.bot = EveBot()
+        
+        self.running = False
+        self.game_hwnd = None
+        self.last_game_width = 1024
+        
+        self.root.protocol("WM_DELETE_WINDOW", self.on_exit)
 
     def log_safe(self, text):
-            """Безопасно вызываем лог из потока _log_reader"""
-            if self.root.winfo_exists():
-                self.root.after(0, self.update_log_widget, text)
+        if self.root.winfo_exists():
+            self.root.after(0, self.update_log_widget, text)
 
     def update_log_widget(self, text):
-        self.log_view.insert(tk.END, f"[{time.strftime('%H:%M:%S')}] {text}\n")
-        self.log_view.see(tk.END)
+        if self.log_view.winfo_exists():
+            # Разрешаем редактирование, чтобы вставить текст, затем запрещаем
+            self.log_view.config(state="normal")
+            self.log_view.insert(tk.END, f"[{time.strftime('%H:%M:%S')}] {text}\n")
+            self.log_view.see(tk.END)
+            self.log_view.config(state="disabled")
 
     def find_game_window(self):
         target_process = "exefile.exe"
         self.found_hwnd = None
-
         def enum_windows_callback(hwnd, _):
             if win32gui.IsWindowVisible(hwnd):
                 title = win32gui.GetWindowText(hwnd)
@@ -100,7 +95,6 @@ class EveApp:
                                 return False
                     except: pass
             return True
-
         win32gui.EnumWindows(enum_windows_callback, None)
         return self.found_hwnd
 
@@ -110,46 +104,43 @@ class EveApp:
         if self.game_hwnd:
             rect = win32gui.GetClientRect(self.game_hwnd)
             w = rect[2] - rect[0]
-            if w > 100:
-                self.last_game_width = w
+            if w > 100: self.last_game_width = w
         return self.last_game_width
 
     def build_ui(self):
-        # Кнопки
         btn_frame = tk.Frame(self.root, bg='#1a1a1a', pady=10)
         btn_frame.pack(fill=tk.X, padx=10)
         
-        self.btn_start = tk.Button(btn_frame, text="START BOT", bg='#1b5e20', fg='white', command=self.start_bot, height=2)
+        self.btn_start = tk.Button(btn_frame, text="START BOT", bg='#1b5e20', fg='white', command=self.start_bot, height=2, font=("Arial", 10, "bold"))
         self.btn_start.pack(fill=tk.X, pady=2)
         
-        self.btn_stop = tk.Button(btn_frame, text="STOP BOT", bg='#b71c1c', fg='white', command=self.stop_bot, height=2, state="disabled")
+        self.btn_stop = tk.Button(btn_frame, text="STOP BOT", bg='#b71c1c', fg='white', command=self.stop_bot, height=2, state="disabled", font=("Arial", 10, "bold"))
         self.btn_stop.pack(fill=tk.X, pady=2)
 
-        # Переключатели
-        opts_frame = tk.Frame(self.root, bg='#1a1a1a', padx=10)
+        opts_frame = tk.Frame(self.root, bg='#1a1a1a', padx=10, pady=5)
         opts_frame.pack(fill=tk.X)
         
-        self.mode_var = tk.BooleanVar()
-        tk.Checkbutton(opts_frame, text="Mode: DRONES", variable=self.mode_var, bg='#1a1a1a', fg='#00ffaa', selectcolor='black').pack(anchor="w")
+        self.mode_var = tk.BooleanVar(value=False)
+        self.mode_check = tk.Checkbutton(opts_frame, text="Mode: DRONES (On/Off)", variable=self.mode_var, command=self.on_mode_change, bg='#1a1a1a', fg='#00ffaa', selectcolor='black', activebackground='#1a1a1a', activeforeground='#00ffaa')
+        self.mode_check.pack(anchor="w")
         
-        self.debug_var = tk.BooleanVar()
-        tk.Checkbutton(opts_frame, text="Show Debug HUD", variable=self.debug_var, command=self.toggle_debug, bg='#1a1a1a', fg='white', selectcolor='black').pack(anchor="w")
+        self.debug_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(opts_frame, text="Show Debug HUD", variable=self.debug_var, command=self.toggle_debug, bg='#1a1a1a', fg='white', selectcolor='black', activebackground='#1a1a1a').pack(anchor="w")
 
-        # Вывод WorldState (расширенный)
         tk.Label(self.root, text="WORLD STATUS", bg='#1a1a1a', fg='#888888', font=("Arial", 8, "bold")).pack(anchor="w", padx=10)
-        self.status_view = tk.Text(self.root, height=18, bg='black', fg='#00ccff', font=("Consolas", 10), padx=10, pady=10, relief="flat")
+        # state="disabled" позволяет копировать, но запрещает ввод
+        self.status_view = tk.Text(self.root, height=18, bg='black', fg='#00ccff', font=("Consolas", 10), padx=10, pady=10, relief="flat", state="disabled")
         self.status_view.pack(fill=tk.X, padx=10, pady=5)
 
-        # Логи
         tk.Label(self.root, text="CONSOLE LOG", bg='#1a1a1a', fg='#888888', font=("Arial", 8, "bold")).pack(anchor="w", padx=10)
-        self.log_view = tk.Text(self.root, bg='black', fg='#777777', font=("Consolas", 9), padx=10, pady=5, relief="flat")
+        self.log_view = tk.Text(self.root, bg='black', fg='#777777', font=("Consolas", 9), padx=10, pady=5, relief="flat", state="disabled")
         self.log_view.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
-        tk.Button(self.root, text="EXIT", command=self.root.quit, bg='#333333', fg='white').pack(fill=tk.X, padx=10, pady=10)
+        tk.Button(self.root, text="EXIT", command=self.on_exit, bg='#333333', fg='white', relief="flat").pack(fill=tk.X, padx=10, pady=10)
 
-    def log(self, text):
-        self.log_view.insert(tk.END, f"[{time.strftime('%H:%M:%S')}] {text}\n")
-        self.log_view.see(tk.END)
+    def on_mode_change(self):
+        mode = "DRONES" if self.mode_var.get() else "GUNS"
+        self.update_log_widget(f"Combat mode changed to: {mode}")
 
     def toggle_debug(self):
         if self.debug_var.get(): self.debug_window.deiconify()
@@ -159,29 +150,43 @@ class EveApp:
         self.running = True
         self.btn_start.config(state="disabled")
         self.btn_stop.config(state="normal")
-        self.log("BOT STARTED")
+        self.update_log_widget("SYSTEM: BOT STARTED")
 
     def stop_bot(self):
         self.running = False
         self.btn_start.config(state="normal")
         self.btn_stop.config(state="disabled")
-        self.log("BOT STOPPED")
+        self.update_log_widget("SYSTEM: BOT STOPPED")
+
+    def on_exit(self):
+            print("[App] Shutdown sequence started...")
+            self.running = False
+            
+            # Сначала убиваем процесс через клиент
+            if hasattr(self, 'client'):
+                self.client.stop()
+                
+            # Возвращаем stderr на место
+            sys.stderr = sys.__stderr__
+            
+            # Закрываем окно
+            self.root.destroy()
+            
+            # Жесткий выход из Python (завершает все фоновые потоки моментально)
+            os._exit(0)
 
     def generate_report(self, state):
         report = []
-        # Локал
         safety = "!!! DANGER !!!" if (state.hostiles_in_local or state.local_has_neutral) else "LOCAL SAFE"
-        # Навигация
+        report.append(f"DEFENSE: {safety}")
+        
         nav = "STATIONARY"
         if state.is_warp: nav = "WARP"
         elif state.is_establishing: nav = "ALIGNING"
         elif state.is_orbiting: nav = "ORBITING"
-        
-        report.append(f"DEFENSE: {safety}")
         report.append(f"NAV: {nav}")
         report.append(f"SHIP: SHLD {state.shield_pct:.1f}% | ARM {state.armor_pct:.1f}%")
         
-        # Дроны
         if state.drones_in_space > 0:
             d_status = "IDLE" if state.drones_idle else "FIGHTING"
             warn = " [UNDER ATTACK]" if state.drones_under_attack else ""
@@ -189,53 +194,56 @@ class EveApp:
         else:
             report.append("DRONES: In Bay")
 
-        # Цели
-        if state.targets:
-            report.append(f"TARGETS: {len(state.targets)} locked")
-
-        # NPC
+        report.append(f"TARGETS: {len(state.targets)} locked")
+        
+        # ОТЧЕТ ПО NPC (добавлена поддержка Battlecruisers)
         if state.npc_all:
-            report.append(f"NPC: {len(state.npc_all)} (F:{len(state.npc_frigate)} C:{len(state.npc_cruiser)} B:{len(state.npc_battleship)})")
+            f = len(state.npc_frigate)
+            c = len(state.npc_cruiser)
+            bc = len(getattr(state, 'npc_battlecruiser', [])) # Используем getattr на случай, если в parser еще не добавлено
+            b = len(state.npc_battleship)
+            report.append(f"NPC: {len(state.npc_all)} (F:{f} C:{c} BC:{bc} B:{b})")
 
-        # Модули
         active_mods = [name for name, status in state.modules.items() if status == "ACTIVE"]
         if active_mods:
-            report.append(f"ACTIVE: {', '.join(active_mods)}")
+            report.append(f"ACTIVE MODS: {', '.join(active_mods)}")
 
         return "\n".join(report)
 
     def logic_loop(self):
+        if not self.root.winfo_exists(): return
         try:
             data = self.client.queue.get_nowait()
             state, draw_list = self.parser.parse(data)
             
-            # Обновляем текст отчета
+            # Обновление текста состояния (с возможностью выделения)
+            self.status_view.config(state="normal")
             self.status_view.delete("1.0", tk.END)
             self.status_view.insert("1.0", self.generate_report(state))
+            self.status_view.config(state="disabled")
             
-            # Подсветка опасности
             if state.hostiles_in_local or state.local_has_neutral:
                 self.status_view.config(fg="#ff5555")
             else:
                 self.status_view.config(fg="#00ccff")
 
             if self.running:
-                self.bot.think(state)
+                self.bot.think(state, use_drones=self.mode_var.get())
 
             if self.debug_var.get():
                 self.render_debug(draw_list)
 
         except Empty: pass
         except Exception as e:
-            if "invalid command" not in str(e):
-                print(f"Loop error: {e}")
+            if "invalid command" not in str(e) and self.root.winfo_exists():
+                print(f"Logic Error: {e}")
 
         self.root.after(30, self.logic_loop)
 
     def render_debug(self, draw_list):
+        if not self.debug_window.winfo_exists(): return
         canvas = self.debug_window.canvas
         canvas.delete("all")
-        
         game_w = self.get_actual_game_width()
         canvas_w = canvas.winfo_width()
         scale = canvas_w / game_w if game_w > 0 else 1.0
