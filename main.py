@@ -1,22 +1,49 @@
+import win32gui
+import win32process
+import win32api
+import win32con
 import tkinter as tk
 from threading import Thread
 from queue import Empty
 from client import EveClient
 from parser import EveParser
-from brain import EveBrain
+from bot import EveBot 
+
 
 class EveApp:
     def __init__(self, exe_path):
         self.client = EveClient(exe_path)
         self.parser = EveParser()
-        self.brain = EveBrain()
+        self.bot = EveBot()
 
         self.root = tk.Tk()
         self.root.title("EVE Automation - WorldState Mode")
-        self.root.geometry("1100x850")
+        # 1. Задаем размеры окна
+        win_w = 800
+        win_h = 800
+        # 2. Получаем разрешение ТВОЕГО монитора (рабочего стола)
+        screen_w = self.root.winfo_screenwidth()
+        # 3. Вычисляем X так, чтобы правый край окна совпал с правым краем экрана
+        # Координата X = Ширина экрана - Ширина окна
+        pos_x = screen_w - win_w
+        pos_y = 0  # Прижать к самому верху
+        # 4. Устанавливаем геометрию
+        self.root.geometry(f"{win_w}x{win_h}+{pos_x}+{pos_y}")
+        self.scale = 1.0
         self.root.configure(bg='#0a0a0a')
 
-        self.canvas = tk.Canvas(self.root, bg='#0a0a0a', highlightthickness=0)
+        # 2. Добавляем переменные для хранения данных об окне игры
+        self.game_hwnd = None      # Здесь будет храниться ID окна игры
+        self.last_game_width = 1024 # Дефолтная ширина на случай, если игра закрыта
+        self.scale = 1.0           # Стартовый масштаб (обновится в первом цикле)
+
+        self.canvas = tk.Canvas(
+            self.root,
+            bg='#0a0a0a',
+            highlightthickness=0,
+            #width=1024, # Укажи ширину области игры
+            #height=768  # Укажи высоту (оставь место снизу под Label)
+            )
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
         self.status_label = tk.Label(
@@ -26,13 +53,56 @@ class EveApp:
             bg="#111111",
             font=("Consolas", 10),
             justify=tk.LEFT,
-            anchor="w",
+            height=8,
+            anchor="nw",
             padx=15,
             pady=10
         )
         self.status_label.pack(fill=tk.X, side=tk.BOTTOM)
 
-        self.scale = 0.6
+
+    def find_game_window(self):
+            """Поиск окна exefile.exe с заголовком EVE"""
+            target_process = "exefile.exe"
+            self.found_hwnd = None
+
+            def enum_windows_callback(hwnd, _):
+                if win32gui.IsWindowVisible(hwnd):
+                    title = win32gui.GetWindowText(hwnd)
+                    # Проверяем, что окно начинается на EVE
+                    if title.startswith("EVE"):
+                        # Получаем PID процесса этого окна
+                        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+                        try:
+                            # Открываем процесс, чтобы узнать его имя
+                            handle = win32api.OpenProcess(win32con.PROCESS_QUERY_INFORMATION | win32con.PROCESS_VM_READ, False, pid)
+                            exe_name = win32process.GetModuleFileNameEx(handle, 0)
+                            win32api.CloseHandle(handle)
+                            
+                            if target_process in exe_name.lower():
+                                self.found_hwnd = hwnd
+                                print(hwnd)
+                                return False # Остановить перебор
+                        except Exception:
+                            pass
+                return True
+
+            win32gui.EnumWindows(enum_windows_callback, None)
+            return self.found_hwnd
+
+    def get_actual_game_width(self):
+        """Берет ширину игрового пространства"""
+        # Если окно потеряно или еще не найдено — ищем
+        if not self.game_hwnd or not win32gui.IsWindow(self.game_hwnd):
+            self.game_hwnd = self.find_game_window()
+
+        if self.game_hwnd:
+            rect = win32gui.GetClientRect(self.game_hwnd)
+            w = rect[2] - rect[0]
+            if w > 100:
+                self.last_game_width = w
+                return w
+        return self.last_game_width        
 
     def generate_report(self, state):
         report = []
@@ -100,8 +170,18 @@ class EveApp:
     def update_loop(self):
         try:
             data = self.client.queue.get_nowait()
+            
+                # --- РАСЧЕТ АВТОМАТИЧЕСКОГО МАСШТАБА ---
+            game_w = self.get_actual_game_width()
+            canvas_w = self.canvas.winfo_width()
+            
+            # Обновляем self.scale перед парсингом/отрисовкой
+            if canvas_w > 1 and game_w > 1:
+                self.scale = canvas_w / game_w
+            # ---------------------------------------
+
             world_state, draw_list = self.parser.parse(data)
-            self.brain.think(world_state)
+            self.bot.think(world_state)
 
             self.canvas.delete("all")
             occupied_labels = []

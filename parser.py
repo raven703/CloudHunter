@@ -15,6 +15,8 @@ class WorldState:
     # Для изменяемых типов (dict, list) в dataclass используется default_factory
     modules: Dict[str, str] = field(default_factory=dict)
     targets: Dict[int, dict] = field(default_factory=dict)
+
+    combat_mode_active: str = "IDLE"  # Текущий активный режим: GUNS, DRONES, SAFETY, IDLE
     
     drones_in_space: int = 0
     drones_idle: bool = False
