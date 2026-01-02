@@ -75,14 +75,19 @@ class EveApp:
                         _, pid = win32process.GetWindowThreadProcessId(hwnd)
                         try:
                             # Открываем процесс, чтобы узнать его имя
-                            handle = win32api.OpenProcess(win32con.PROCESS_QUERY_INFORMATION | win32con.PROCESS_VM_READ, False, pid)
+                            handle = win32api.OpenProcess(
+                                win32con.PROCESS_QUERY_INFORMATION | win32con.PROCESS_VM_READ,
+                                 False, pid)
                             exe_name = win32process.GetModuleFileNameEx(handle, 0)
                             win32api.CloseHandle(handle)
                             
                             if target_process in exe_name.lower():
-                                self.found_hwnd = hwnd
-                                print(hwnd)
-                                return False # Остановить перебор
+                                # Добавляем проверку на размер, чтобы не поймать "призраков"
+                                rect = win32gui.GetWindowRect(hwnd)
+                                if rect[2] - rect[0] > 100 and rect[3] - rect[1] > 100:
+                                    self.found_hwnd = hwnd
+                                    print(f"DEBUG: Found '{target_process}' | PID: {pid} | Window: '{title}' | HWND: {hwnd}")
+                                    return False # Остановить перебор
                         except Exception:
                             pass
                 return True
