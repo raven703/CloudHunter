@@ -195,13 +195,39 @@ class EveApp:
         elif state.is_orbiting: nav = "ORBITING"
         report.append(f"NAV: {nav}")
         report.append(f"SHIP: SHLD {state.shield_pct:.1f}% | ARM {state.armor_pct:.1f}%")
-        
-        if state.drones_in_space > 0:
-            d_status = "IDLE" if state.drones_idle else "FIGHTING"
-            warn = " [UNDER ATTACK]" if state.drones_under_attack else ""
-            report.append(f"DRONES: {state.drones_in_space} in space | {d_status}{warn}")
+        # --- СТАТУС РЕПОК ---
+        if state.repairers:
+            rep_status = []
+            for name, status in state.repairers.items():
+                # Упрощаем имя слота для компактности (InFlightLowSlot0 -> Low 0)
+                short_name = name.replace("InFlightLowSlot", "Low ")
+                color_mark = "●" if status == "ACTIVE" else "○"
+                rep_status.append(f"{short_name}:{color_mark}")
+            
+            report.append(f"REPAIR: {' '.join(rep_status)}")
         else:
-            report.append("DRONES: In Bay")
+            report.append("REPAIR: NOT FOUND")
+        
+        #ЛОГИКА ДРОНОВ
+        if state.drones_in_space > 0:
+            # Если в космосе > 0, выводим их боевой статус
+            if state.drones_returning:
+                d_status = "RETURNING"
+            elif state.drones_fighting:
+                d_status = "FIGHTING"
+            else:
+                d_status = "IDLE"
+            
+            warn = " [ATTACKED]" if state.drones_under_attack else ""
+            report.append(f"DRONES: {state.drones_in_space} in space | {d_status}{warn}")
+        
+        elif state.drones_in_bay > 0:
+            # Если в космосе 0, но в ангаре кто-то есть
+            report.append(f"DRONES: {state.drones_in_bay} in bay")
+        
+        else:
+            # Если вообще нигде не нашли
+            report.append("DRONES: EMPTY / NOT FOUND")
 
         report.append(f"TARGETS: {len(state.targets)} locked")
         

@@ -6,22 +6,25 @@ from typing import List, Dict
 class WorldState:
     shield_pct: float = 100.0
     armor_pct: float = 100.0
+    # Для изменяемых типов (dict, list) в dataclass используется default_factory
+    modules: dict = field(default_factory=dict)
+    targets: Dict[int, dict] = field(default_factory=dict)
+    repairers: dict = field(default_factory=dict)
+
     is_warp: bool = False
     is_establishing: bool = False
     is_orbiting: bool = False
     hostiles_in_local: bool = False
     local_has_neutral: bool = False
     
-    # Для изменяемых типов (dict, list) в dataclass используется default_factory
-    modules: Dict[str, str] = field(default_factory=dict)
-    targets: Dict[int, dict] = field(default_factory=dict)
-
     combat_mode_active: str = "IDLE"  # Текущий активный режим: GUNS, DRONES, SAFETY, IDLE
     
     drones_in_space: int = 0
+    drones_in_bay: int = 0
     drones_idle: bool = False
     drones_fighting: bool = False
     drones_under_attack: bool = False
+    drones_returning: bool = False
 
     # Списки NPC
     npc_all: List[tuple] = field(default_factory=list)
@@ -165,17 +168,58 @@ class EveParser:
         if "Drones in Space" in txt:
             nums = re.findall(r"\d+", txt)
             if nums: state.drones_in_space = int(nums[0])
-        elif "Idle" in txt: self._drone_statuses.append("Idle")
+        elif "Drones in Bay" in txt:
+            nums = re.findall(r"\d+", txt)
+            if nums: state.drones_in_bay = int(nums[0])
+        
+        # Собираем статусы для финализации
+        if "Idle" in txt: self._drone_statuses.append("Idle")
         elif "Fighting" in txt: self._drone_statuses.append("Fighting")
-        elif "droneGaugeBarDmg" in name:
-            if self.get_val(ei.get("_displayWidth")) > 2: state.drones_under_attack = True
+        elif "Returning" in txt: self._drone_statuses.append("Returning")
+        
+        if "droneGaugeBarDmg" in name:
+            if self.get_val(ei.get("_displayWidth")) > 2: 
+                state.drones_under_attack = True
 
     def _check_ship(self, node, ei, obj_type, name, state, draw_list, ax, ay, w, h):
         if obj_type == "ShipSlot":
             active = False
-            # Проходим по детям слота
+            is_repairer = False
+            # Собираем всё, что может содержать название модуля
+            # 1. Тултип самого слота
+            # 2. Текст дочерних объектов (иконки/лейбла)
+            # 3. Названия текстур (иногда там есть id модуля)
+            
+            search_area = str(ei.get('_toolTip', '')).lower() + str(ei.get('_name', '')).lower()
+            # Проверяем детей для более глубокого поиска названия
+            for c in node.get("children", []) or []:
+                cei = c.get("dictEntriesOfInterest", {})
+                search_area += str(cei.get('_text', '')).lower()
+                search_area += str(cei.get('_label', '')).lower()
+                search_area += str(cei.get('_texturePath', '')).lower()
+
+# Параллельно проверяем активность (твой рабочий код)
+                c_name = str(cei.get('_name', ''))
+                if "ramp_active" in c_name:
+                    if self.get_val(cei.get('_displayWidth')) > 0:
+                        active = True
+                
+                texture = str(cei.get('_texturePath', '')).lower()
+                if "glow" in texture or "active" in texture:
+                    active = True
+
+            # Проверка на репку (можно добавить 'rep' для краткости, если 'armor repairer' не ловится)
+            if "armor repairer" in search_area:
+                is_repairer = True
+
+            # Проходим по детям слота (иконку и анимацию активации)
             for c in node.get("children", []) or []:
                 child_ei = c.get("dictEntriesOfInterest", {})
+                # Если в репку тултипе не нашли, ищем в тексте дочерних элементов
+                if not is_repairer:
+                    child_text = str(child_ei.get('_text', '')).lower()
+                    if "armor repairer" in child_text:
+                        is_repairer = True
                 
                 # 1. Проверяем по имени анимации активации
                 child_name = str(child_ei.get('_name', ''))
@@ -190,12 +234,11 @@ class EveParser:
                 if "glow" in texture or "active" in texture:
                     active = True
                     break
-
+            # Записываем общие данные по модулям           
             state.modules[name] = "ACTIVE" if active else "READY"
-           # if "MediumSlot" in name:
-           #     print(f"Slot: {name}, Children count: {len(node.get('children', []))}")
-           #     for c in node.get('children', []):
-           #         print(f"  Child: {c.get('dictEntriesOfInterest', {}).get('_name')}")
+            if is_repairer:
+                state.repairers[name] = "ACTIVE" if active else "READY"
+   
             
             draw_list.append({
                 "rect": (ax, ay, w, h),
@@ -241,5 +284,22 @@ class EveParser:
 
     def _finalize_state(self, state):
         if self._drone_statuses:
-            state.drones_idle = any(s == "Idle" for s in self._drone_statuses)
-            state.drones_fighting = all(s == "Fighting" for s in self._drone_statuses)
+            s_set = set(self._drone_statuses)
+            
+            # Строгий приоритет статусов
+            if "Returning" in s_set:
+                state.drones_returning = True
+                state.drones_fighting = False
+                state.drones_idle = False
+            elif "Fighting" in s_set:
+                state.drones_returning = False
+                state.drones_fighting = True
+                state.drones_idle = False
+            else:
+                state.drones_returning = False
+                state.drones_fighting = False
+                state.drones_idle = True
+        else:
+            state.drones_returning = False
+            state.drones_fighting = False
+            state.drones_idle = False
