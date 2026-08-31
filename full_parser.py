@@ -39,6 +39,8 @@ def clean_html(text: str) -> str:
 def parse_distance(text: str) -> float:
     """Парсинг расстояния из текста"""
     text = clean_html(text).replace(',', '.').lower()
+    # Убираем пробелы-разделители тысяч: '1 234 m' -> '1234 m'
+    text = re.sub(r'(\d)\s+(?=\d)', r'\1', text)
     
     # Ищем число с единицей измерения
     patterns = [
@@ -52,6 +54,15 @@ def parse_distance(text: str) -> float:
         if match:
             return float(match.group(1)) * multiplier
     return 0.0
+
+
+# Строгий шаблон строки-расстояния: '0 m', '1 234 m', '12,5 km', '2.3 AU'
+_DISTANCE_LABEL_RE = re.compile(r'^[\d\s.,]+\s*(au|km|m)$', re.IGNORECASE)
+
+
+def _is_distance_label(text: str) -> bool:
+    """Строгое определение строки-расстояния (в отличие от хрупкой 'm' in text)."""
+    return bool(_DISTANCE_LABEL_RE.match(text.strip()))
 
 
 def parse_percent(text: str) -> float:
@@ -583,81 +594,95 @@ def parse_drone_entry(entry_node: Dict) -> Dict:
 # ==================== ПАРСЕР ЦЕЛЕЙ (l_target) ====================
 
 def parse_targets(root: Dict) -> Dict[str, Any]:
-    """Парсинг целей"""
+    """Парсинг захваченных целей (слой l_target).
+
+    Реальная структура в дампах (uiroot.json):
+        l_viewstate -> l_view_overlays -> l_target (LayerCore)
+            -> Container -> Container('aRowx_N') -> TargetInBar('target')
+    Вложенность слоёв меняется между версиями UI, поэтому l_target и ряды
+    aRowx_N НЕ ищем по прямой вложенности: цели собираем рекурсивно по типу
+    TargetInBar/TargetInActive с накоплением абсолютных координат
+    (так же, как это делает старый парсер) — поиск не зависит от иерархии.
+    """
     result = {
         'targets': [],
         'active_target': None
     }
-    
-    # Ищем l_target через l_viewstate
-    l_viewstate = None
-    for child in root.get('children', []):
-        if child.get('dictEntriesOfInterest', {}).get('_name') == 'l_viewstate':
-            l_viewstate = child
-            break
-    
-    if not l_viewstate:
-        return result
-    
-    l_target = None
-    for child in l_viewstate.get('children', []):
-        if child.get('pythonObjectTypeName') == 'LayerCore':
-            if child.get('dictEntriesOfInterest', {}).get('_name') == 'l_target':
-                l_target = child
-                break
-    
-    if not l_target:
-        return result
-    
-    # Ищем контейнеры с целями (aRowx_N)
-    for child in l_target.get('children', []):
-        if child.get('pythonObjectTypeName') == 'Container':
-            ei = child.get('dictEntriesOfInterest', {})
-            name = str(ei.get('_name', ''))
-            if name.startswith('aRowx_'):
-                target = parse_target_entry(child)
-                if target:
-                    result['targets'].append(target)
-                    if target.get('is_active'):
-                        result['active_target'] = target
-    
+
+    # Собираем все узлы захваченных целей с абсолютными координатами
+    found = []
+    _collect_target_nodes(root, 0, 0, found)
+
+    for target_node, ax, ay in found:
+        target = parse_target_entry(target_node, ax, ay)
+        if target:
+            result['targets'].append(target)
+            if target.get('is_active') and result['active_target'] is None:
+                result['active_target'] = target
+
     return result
 
 
-def parse_target_entry(entry_node: Dict) -> Optional[Dict]:
-    """Парсинг одной цели"""
+def _collect_target_nodes(node: Dict, px: int, py: int, out: List) -> None:
+    """Рекурсивный сбор узлов захваченных целей (TargetInBar/TargetInActive).
+
+    Координаты накапливаются по цепочке _displayX/_displayY — получаем
+    абсолютные экранные координаты цели.
+    """
+    if not isinstance(node, dict):
+        return
+    ei = node.get('dictEntriesOfInterest', {})
+    ax = px + get_val(ei.get('_displayX'))
+    ay = py + get_val(ei.get('_displayY'))
+    if node.get('pythonObjectTypeName') in ('TargetInBar', 'TargetInActive'):
+        out.append((node, ax, ay))
+    for child in node.get('children', []) or []:
+        _collect_target_nodes(child, ax, ay, out)
+
+
+def parse_target_entry(target_node: Dict, abs_x: int = 0, abs_y: int = 0) -> Optional[Dict]:
+    """Парсинг одной цели из узла TargetInBar.
+
+    Структура цели в дампе:
+      TargetInBar('target')
+        -> Container('barAndImageCont') -> Transform('iconPar')
+             -> Transform -> ActiveTargetIndicator  (индикатор АКТИВНОЙ цели)
+        -> ContainerAutoSize('labelContainer')
+             -> EveLabelSmall ('4GQ-XQ -', 'Kuvakei [FVHC]', '0 m')
+    """
     result = {
         'name': '',
         'distance': 0.0,
         'is_active': False,
-        'x': 0,
-        'y': 0
+        'x': abs_x,
+        'y': abs_y
     }
-    
-    coords = get_node_coords(entry_node)
-    result['x'] = coords['x']
-    result['y'] = coords['y']
-    
-    for child in entry_node.get('children', []):
-        if child.get('pythonObjectTypeName') == 'TargetInBar':
-            for sub in child.get('children', []):
-                # Ищем имя и расстояние
-                if sub.get('pythonObjectTypeName') == 'ContainerAutoSize':
-                    if sub.get('dictEntriesOfInterest', {}).get('_name') == 'labelContainer':
-                        for label in sub.get('children', []):
-                            if label.get('pythonObjectTypeName') == 'EveLabelSmall':
-                                text = get_node_text(label)
-                                if 'm' in text or 'km' in text:
-                                    result['distance'] = parse_distance(text)
-                                elif text and not text.startswith('<center>'):
-                                    if not result['name']:
-                                        result['name'] = text
-                
-                # Проверяем активную цель
-                if sub.get('pythonObjectTypeName') == 'ActiveTargetIndicator':
-                    result['is_active'] = True
-    
-    return result if result['name'] else None
+
+    # Активная цель помечена индикатором где-то в поддереве
+    # (TargetInBar -> barAndImageCont -> iconPar -> Transform -> ActiveTargetIndicator),
+    # поэтому ищем рекурсивно, а не только среди прямых детей.
+    if find_first_by_type(target_node, 'ActiveTargetIndicator'):
+        result['is_active'] = True
+
+    # Имя и расстояние — из меток labelContainer
+    name_parts = []
+    for sub in target_node.get('children', []):
+        if sub.get('pythonObjectTypeName') == 'ContainerAutoSize':
+            if sub.get('dictEntriesOfInterest', {}).get('_name') == 'labelContainer':
+                for label in sub.get('children', []):
+                    if label.get('pythonObjectTypeName') == 'EveLabelSmall':
+                        text = get_node_text(label)
+                        if not text:
+                            continue
+                        if _is_distance_label(text):
+                            result['distance'] = parse_distance(text)
+                        else:
+                            name_parts.append(text)
+
+    # Имя цели может занимать несколько строк — склеиваем их
+    result['name'] = ' '.join(name_parts) if name_parts else 'Target'
+
+    return result
 
 
 # ==================== ПАРСЕР ВЫБРАННОГО ОБЪЕКТА ====================
