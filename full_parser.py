@@ -240,16 +240,22 @@ def _parse_capacitor_cells(cap_node: Dict) -> Optional[float]:
     """Уровень капаситора (%) по кольцу ячеек внутри CapacitorContainer.
 
     Кольцо = 18 колонок (Transform 'powerColumn') x 4 ячейки (Sprite 'pmark')
-    = 72 ячейки. Заполненная ячейка: _color.aPercent > 0 (обычно 50),
-    пустая: _color.aPercent == 0. Спрайт 'powerblink'
-    (capacitorCellGlow.png) — мерцающая ячейка на границе заполнения,
-    в подсчёте не участвует. Точность — одна ячейка (~1.4%).
+    = 72 ячейки. Семантика (проверена на дампах с разным уровнем капы):
+      * ВИДИМАЯ ячейка (_color.aPercent > 0) — это РАЗРЯЖЕННАЯ (тёмная) часть
+        кольца; заполненная часть рисуется яркой дугой, и ячейки у неё в
+        дампе прозрачны (aPercent == 0);
+      * 'powerblink' (capacitorCellGlow.png) — мерцающая ячейка на границе
+        разряда/заряда (фронтир), в подсчёте не участвует.
+
+    Процент = 100 - (видимые ячейки / 72) * 100.
+    Знаменатель фиксирован (72), потому что дампер захватывает не все 18
+    колонок сразу, а лишь часть (в дампе при почти полном капе было 3
+    колонки из 18). Точность — одна ячейка (~1.4%).
 
     Fallback: если 'pmark' не найдены, пробуем любой дочерний узел с
     _lastValue (на случай изменения структуры дампа в будущих патчах).
     """
-    filled = 0
-    total = 0
+    depleted = 0
     for col in cap_node.get('children', []) or []:
         if not isinstance(col, dict):
             continue
@@ -259,13 +265,13 @@ def _parse_capacitor_cells(cap_node: Dict) -> Optional[float]:
             ei = spr.get('dictEntriesOfInterest', {}) or {}
             if ei.get('_name') != 'pmark':
                 continue
-            total += 1
             color = ei.get('_color') or {}
             alpha = _to_float(color.get('aPercent'))
             if alpha is not None and alpha > 0:
-                filled += 1
-    if total > 0:
-        return max(0.0, min(100.0, filled / total * 100.0))
+                depleted += 1
+    if depleted > 0 or _count_pmarks(cap_node) > 0:
+        cap = 100.0 - depleted / 72.0 * 100.0
+        return max(0.0, min(100.0, cap))
 
     # Fallback: gauge-узел с _lastValue внутри CapacitorContainer.
     stack = list(cap_node.get('children', []) or [])
@@ -282,6 +288,19 @@ def _parse_capacitor_cells(cap_node: Dict) -> Optional[float]:
     return None
 
 
+def _count_pmarks(cap_node: Dict) -> int:
+    """Количество ячеек 'pmark', присутствующих в захваченном поддереве."""
+    count = 0
+    for col in cap_node.get('children', []) or []:
+        if not isinstance(col, dict):
+            continue
+        for spr in col.get('children', []) or []:
+            if isinstance(spr, dict) and \
+                    (spr.get('dictEntriesOfInterest') or {}).get('_name') == 'pmark':
+                count += 1
+    return count
+
+
 def parse_hp_gauges(root: Dict) -> Dict[str, Optional[float]]:
     """Парсинг HP корабля: shield / armor / structure / capacitor в процентах.
 
@@ -295,10 +314,9 @@ def parse_hp_gauges(root: Dict) -> Dict[str, Optional[float]]:
     поэтому shield/armor/structure парсятся именно из него.
 
     Капаситор: кольцо из 18 колонок (powerColumn) x 4 ячеек (Sprite 'pmark')
-    = 72 ячейки внутри CapacitorContainer. Заполненная ячейка имеет
-    _color.aPercent > 0 (обычно 50), пустая — aPercent == 0; 'powerblink'
-    (capacitorCellGlow.png) — мерцающая ячейка на границе заполнения.
-    Процент = заполненные ячейки / все ячейки (шаг ~1.4%).
+    = 72 ячейки внутри CapacitorContainer. Видимая ячейка (_color.aPercent>0)
+    — РАЗРЯЖЕННАЯ часть кольца, 'powerblink' (capacitorCellGlow.png) —
+    мерцающий фронтир разряда/заряда. Процент = 100 - видимые/72*100.
     См. _parse_capacitor_cells().
     """
     result: Dict[str, Optional[float]] = {
@@ -1151,80 +1169,124 @@ def parse_local_chat(root: Dict) -> Dict[str, Any]:
 # ==================== ПАРСЕР ПРОБ-СКАНЕРА ====================
 
 def parse_scan_results(root: Dict) -> List[Dict]:
-    """Парсинг результатов сканирования"""
-    result = []
-    
+    """Парсинг результатов проб-сканера (окно Probe Scanner).
+
+    Вместо хрупкого пути по именам контейнеров ищем ВСЕ узлы
+    ScanResultNew внутри ProbeScannerWindow. Реальное расположение
+    (свежий дамп): content -> main -> ProbeScannerPalette ->
+    Container('ScanResultsContainer') -> ScanResults('resultScroll') ->
+    Container('maincontainer') -> Container('__clipper') ->
+    Container('__content') -> ScanResultNew*; при пересканировании строки
+    могут временно оказаться в SwipeAnimator('scanAnimator').
+    """
+    result: List[Dict] = []
     scanner_wnd = find_first_by_type(root, 'ProbeScannerWindow')
     if not scanner_wnd:
         return result
-    
-    # Ищем результаты
-    for child in scanner_wnd.get('children', []):
-        if child.get('pythonObjectTypeName') == 'Container':
-            if child.get('dictEntriesOfInterest', {}).get('_name') == 'content':
-                for sub in child.get('children', []):
-                    if sub.get('pythonObjectTypeName') == 'Container':
-                        if sub.get('dictEntriesOfInterest', {}).get('_name') == 'main':
-                            for palette in sub.get('children', []):
-                                if palette.get('pythonObjectTypeName') == 'ProbeScannerPalette':
-                                    for scan_results in palette.get('children', []):
-                                        if scan_results.get('pythonObjectTypeName') == 'Container':
-                                            if scan_results.get('dictEntriesOfInterest', {}).get('_name') == 'ScanResultsContainer':
-                                                for scan in scan_results.get('children', []):
-                                                    if scan.get('pythonObjectTypeName') == 'ScanResults':
-                                                        for entry in scan.get('children', []):
-                                                            if entry.get('pythonObjectTypeName') == 'Container':
-                                                                if entry.get('dictEntriesOfInterest', {}).get('_name') == 'maincontainer':
-                                                                    for clipper in entry.get('children', []):
-                                                                        if clipper.get('pythonObjectTypeName') == 'Container':
-                                                                            for content in clipper.get('children', []):
-                                                                                if content.get('pythonObjectTypeName') == 'Container':
-                                                                                    for scan_result in content.get('children', []):
-                                                                                        if scan_result.get('pythonObjectTypeName') == 'ScanResultNew':
-                                                                                            parsed = parse_scan_result(scan_result)
-                                                                                            if parsed:
-                                                                                                result.append(parsed)
-    
+
+    def collect(node):
+        if not isinstance(node, dict):
+            return
+        if node.get('pythonObjectTypeName') == 'ScanResultNew':
+            parsed = parse_scan_result(node)
+            if parsed:
+                result.append(parsed)
+            return  # вложенных ScanResultNew не бывает
+        for child in node.get('children', []) or []:
+            collect(child)
+
+    collect(scanner_wnd)
     return result
 
 
+# Известные названия групп сайтов в колонке Group окна Probe Scanner
+_SITE_GROUP_NAMES = {
+    'ore site', 'combat site', 'cosmic signature', 'cosmic anomaly',
+    'gas site', 'data site', 'relic site', 'wormhole',
+}
+
+# ID сигнатуры: 'ZYY-853' (3 буквы + '-' + 3 цифры)
+_SIG_ID_RE = re.compile(r'^[A-Z]{3}-\d{3}$')
+_PCT_RE = re.compile(r'^[\d.,]+\s*%$')
+_DIST_RE = re.compile(r'^[\d.,]+\s*(au|km|m)$', re.IGNORECASE)
+
+
 def parse_scan_result(scan_node: Dict) -> Optional[Dict]:
-    """Парсинг одного результата сканирования"""
-    result = {
+    """Парсинг одной строки результата сканирования (ScanResultNew).
+
+    Реальная структура строки (свежий дамп ProbeScanner):
+      ScanResultNew(_name='scan_result_ZYY-853')
+        Container > Container > EveLabelMedium('0,0%')        # сила сигнала
+        Container > Container > [Container(Sprite(иконка типа сайта)),
+                                 Container(EveLabelMedium('19,59 AU')),  # дистанция
+                                 Container(EveLabelMedium('ZYY-853')),   # ID
+                                 Container(EveLabelMedium('Cosmic Signature')),  # группа
+                                 Container(EveLabelMedium(имя сайта/пусто))]
+        BarGraphBarHorizontal(name='statusBar')
+
+    Метки лежат на разной глубине, поэтому собираем ВСЕ тексты рекурсивно
+    и классифицируем их по паттернам; ID дополнительно берём из имени узла
+    ('scan_result_XXX-123'), тип сайта — из текстуры иконки.
+    """
+    result: Dict[str, Any] = {
         'id': '',
         'name': '',
         'group': '',
         'distance': 0.0,
         'signal': 0.0,
-        'type': 'signature'
+        'type': 'signature',
     }
-    
-    for child in scan_node.get('children', []):
-        if child.get('pythonObjectTypeName') == 'Container':
-            for sub in child.get('children', []):
-                if sub.get('pythonObjectTypeName') == 'EveLabelMedium':
-                    text = get_node_text(sub)
-                    if '%' in text:
-                        result['signal'] = parse_percent(text)
-                    elif 'AU' in text or 'km' in text:
-                        result['distance'] = parse_distance(text)
-                    elif len(text) >= 7 and '-' in text and len(text) < 15:
-                        result['id'] = text
-                    elif text in ['Ore Site', 'Combat Site', 'Cosmic Signature', 'Relic Site', 'Data Site']:
-                        result['group'] = text
-                    elif text and not result['name']:
-                        result['name'] = text
-                
-                if sub.get('pythonObjectTypeName') == 'Sprite':
-                    texture = str(sub.get('dictEntriesOfInterest', {}).get('_texturePath', ''))
-                    if 'ore_site' in texture:
-                        result['type'] = 'ore'
-                    elif 'combatSite' in texture:
-                        result['type'] = 'combat'
-                    elif 'scanResultLocation' in texture:
-                        result['type'] = 'signature'
-    
-    return result if result['id'] or result['name'] else None
+
+    # ID надёжнее всего закодирован в имени узла: 'scan_result_XXX-123'
+    node_name = str((scan_node.get('dictEntriesOfInterest') or {}).get('_name', ''))
+    if node_name.startswith('scan_result_'):
+        result['id'] = node_name[len('scan_result_'):]
+
+    texts: List[str] = []
+
+    def collect(node):
+        if not isinstance(node, dict):
+            return
+        t = node.get('pythonObjectTypeName', '')
+        ei = node.get('dictEntriesOfInterest', {}) or {}
+        if t in ('EveLabelMedium', 'EveLabelSmall', 'EveLabelLarge', 'Label'):
+            text = clean_html(get_node_text(node))
+            if text:
+                texts.append(text)
+        elif t == 'Sprite':
+            tex = str(ei.get('_texturePath', ''))
+            if 'ore_site' in tex:
+                result['type'] = 'ore'
+            elif 'combatSite' in tex:
+                result['type'] = 'combat'
+            elif 'relicSite' in tex:
+                result['type'] = 'relic'
+            elif 'dataSite' in tex:
+                result['type'] = 'data'
+            elif 'gasSite' in tex:
+                result['type'] = 'gas'
+            elif 'wormhole' in tex:
+                result['type'] = 'wormhole'
+            elif 'scanResultLocation' in tex:
+                result['type'] = 'signature'
+        for child in node.get('children', []) or []:
+            collect(child)
+
+    collect(scan_node)
+
+    for text in texts:
+        if _PCT_RE.match(text):
+            result['signal'] = parse_percent(text)
+        elif _DIST_RE.match(text):
+            result['distance'] = parse_distance(text)
+        elif _SIG_ID_RE.match(text):
+            result['id'] = text
+        elif text.lower() in _SITE_GROUP_NAMES:
+            result['group'] = text
+        elif not result['name']:
+            result['name'] = text
+
+    return result if (result['id'] or result['name']) else None
 
 
 # ==================== ПАРСЕР ИНФО-ПАНЕЛИ ====================

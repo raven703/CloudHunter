@@ -42,18 +42,19 @@ def check(fn):
             ei = n.get("dictEntriesOfInterest", {}) or {}
             if n.get("pythonObjectTypeName") == "ShipHudSpriteGauge":
                 print(f"  raw gauge {ei.get('_name')!r}: _lastValue={ei.get('_lastValue')!r}")
-        # сырые данные кольца капаситора
+        # сырые данные кольца капаситора: видимые ячейки = разряженная часть
         cap = find_first_by_type(ship_ui, "CapacitorContainer")
         if cap:
-            filled = total = 0
+            depleted = total = 0
             for n in _iter(cap):
                 ei = n.get("dictEntriesOfInterest", {}) or {}
                 if ei.get("_name") == "pmark":
                     total += 1
-                    if (ei.get("_color") or {}).get("aPercent", 0) and \
-                            (ei.get("_color") or {}).get("aPercent", 0) > 0:
-                        filled += 1
-            print(f"  raw capacitor ring: filled {filled}/{total} cells")
+                    a = (ei.get("_color") or {}).get("aPercent", 0) or 0
+                    if a > 0:
+                        depleted += 1
+            print(f"  raw capacitor ring: depleted {depleted} cells "
+                  f"(captured {total} pmark, ring=72) -> cap ~= {100 - depleted / 72 * 100:.1f}%")
         else:
             print("  CapacitorContainer не найден")
     hp = parse_hp_gauges(data)
