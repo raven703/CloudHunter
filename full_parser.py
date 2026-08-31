@@ -219,6 +219,79 @@ def parse_menu_entry(entry_node: Dict) -> Dict:
     return result
 
 
+# ==================== ПАРСЕР ASTEROID BELTS (КОНТЕКСТНОЕ МЕНЮ) ====================
+
+# '<Планета> - Asteroid Belt <N>' (например '4GQ-XQ III - Asteroid Belt 1')
+_ASTEROID_BELT_NUM_RE = re.compile(r'(?i)asteroid belt\s*#?\s*(\d+)\s*$')
+
+
+def parse_asteroid_belts(root: Dict) -> List[Dict]:
+    """Список астероидных поясов из открытого контекстного меню.
+
+    При правом клике в космосе меню содержит подменю 'Asteroid Belts'
+    с записями вида '<Планета> - Asteroid Belt <N>' (например
+    '4GQ-XQ III - Asteroid Belt 1'). Записи лежат в слое l_menu как
+    MenuEntryView с _name='context_menu_<текст>' и TextBody(_setText=текст).
+
+    Возвращает список словарей:
+      {'name': полный текст пункта, 'planet': планета, 'belt': номер,
+       'x':, 'y':, 'w':, 'h': координаты пункта в окне (для клика)}
+    Пункт 'Asteroid Belts' (открывашка подменю) и 'Add Asteroid Belt to
+    Overview' в список не попадают (номер пояса отсутствует).
+    """
+    belts: List[Dict] = []
+    l_menu = None
+    for child in root.get('children', []):
+        if child.get('dictEntriesOfInterest', {}).get('_name') == 'l_menu':
+            l_menu = child
+            break
+
+    if not l_menu:
+        return belts
+
+    def walk(node: Dict, ox: int, oy: int) -> None:
+        if not isinstance(node, dict):
+            return
+        ei = node.get('dictEntriesOfInterest', {}) or {}
+        # накапливаем смещения контейнеров, чтобы получить координаты в окне
+        nox = ox + get_val(ei.get('_displayX', 0))
+        noy = oy + get_val(ei.get('_displayY', 0))
+
+        if node.get('pythonObjectTypeName') == 'MenuEntryView':
+            name = str(ei.get('_name', ''))
+            if name.startswith('context_menu_'):
+                text = name[len('context_menu_'):]
+                # предпочитаем текст из TextBody (чистый текст)
+                for ch in node.get('children', []) or []:
+                    if ch.get('pythonObjectTypeName') == 'TextBody':
+                        tb = clean_html(get_node_text(ch))
+                        if tb:
+                            text = tb
+                        break
+                m = _ASTEROID_BELT_NUM_RE.search(text)
+                if m:
+                    planet = text[:m.start()].strip().rstrip('-').strip()
+                    belts.append({
+                        'name': text.strip(),
+                        'planet': planet,
+                        'belt': int(m.group(1)),
+                        'x': nox,
+                        'y': noy,
+                        'w': get_val(ei.get('_displayWidth', 0)),
+                        'h': get_val(ei.get('_displayHeight', 0)),
+                    })
+
+        for ch in node.get('children', []) or []:
+            walk(ch, nox, noy)
+
+    for child in l_menu.get('children', []) or []:
+        walk(child, 0, 0)
+
+    # стабильная сортировка: планета, затем номер пояса
+    belts.sort(key=lambda b: (str(b['planet']), int(b['belt'])))
+    return belts
+
+
 # ==================== ПАРСЕР HP КОРАБЛЯ ====================
 
 def _to_float(val: Any) -> Optional[float]:
@@ -1435,6 +1508,9 @@ def parse_ui_root(json_data: Dict) -> ParsedUIState:
     state.menu_open = menu_data['open']
     state.menu_type = menu_data['menu_type']
     state.menu_items = menu_data['items']
+
+    # ====== ASTEROID BELTS (из открытого контекстного меню) ======
+    state.asteroid_belts = parse_asteroid_belts(root)
     
     # ====== HP КОРАБЛЯ ======
     hp_data = parse_hp_gauges(root)

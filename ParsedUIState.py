@@ -86,6 +86,10 @@ class ParsedUIState:
     menu_type: str = ""  # "context_menu" | "context_submenu"
     menu_items: List[Dict[str, Any]] = field(default_factory=list)
     # [{"name": str, "text": str, "x": int, "y": int, "w": int, "h": int}]
+    asteroid_belts: List[Dict[str, Any]] = field(default_factory=list)
+    # Пояса из открытого подменю 'Asteroid Belts' (правый клик в космосе):
+    # [{"name": "4GQ-XQ III - Asteroid Belt 1", "planet": "4GQ-XQ III",
+    #   "belt": 1, "x": int, "y": int, "w": int, "h": int}]
     
     # === НЕОКОМ (Neocom) ===
     neocom_buttons: List[Dict[str, Any]] = field(default_factory=list)

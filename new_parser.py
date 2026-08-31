@@ -827,27 +827,7 @@ def build_debug_blocks(state: ParsedUIState) -> List[Tuple[str, str]]:
     if len(scans) > 30:
         dim(f"     ... {len(scans) - 30} more")
 
-    # ===== 10. ИНФО-ПАНЕЛЬ =====
-    header("== SIDE PANEL ==")
-    sec = float(state.security_status or 0)
-    sec_tag = 'danger' if sec <= 0.0 else ('warn' if sec <= 0.4 else 'good')
-    add('info', f"  system: {state.current_system or '-'}")
-    add(sec_tag, f"  security: {sec:.1f}")
-    dim(f"  nearest: {state.nearest_location or '-'}")
-    dim(f"  sov holder: {state.sovereignty_holder or '-'}")
-    dim(f"  route: {state.route_destination or '-'}")
-    add(_pct_tag(state.bounty_risk), f"  bounty risk: {state.bounty_risk:.2f}%")
-
-    # ===== 11. НЕОКОМ =====
-    header("== NEОКОМ ==")
-    dim(f"  clock: {state.clock_time or '-'}")
-    buttons = state.neocom_buttons or []
-    has_notif = [b for b in buttons if b.get('has_notification')]
-    add('warn' if has_notif else 'dim', f"  notifications: {state.notification_count or len(has_notif)}")
-    for b in has_notif:
-        add('warn', f"     {str(b.get('name'))} -> {b.get('notification_count', '?')}")
-
-    # ===== 12. КОНТЕКСТНОЕ МЕНЮ =====
+    # ===== 10. КОНТЕКСТНОЕ МЕНЮ =====
     header("== CONTEXT MENU ==")
     if state.menu_open:
         add('info', f"  open: {state.menu_type or 'context_menu'}")
@@ -859,17 +839,31 @@ def build_debug_blocks(state: ParsedUIState) -> List[Tuple[str, str]]:
     else:
         dim("  (closed)")
 
-    # ===== 13. СТАТУС БОТА =====
+    # ===== 11. ASTEROID BELTS (из контекстного меню) =====
+    header("== ASTEROID BELTS ==")
+    belts = getattr(state, 'asteroid_belts', None) or []
+    if belts:
+        add('info', f"  {len(belts)} belts (from open context menu)")
+        for b in belts[:40]:
+            add('info', f"     {str(b.get('name') or '?'):<40} "
+                        f"@ ({b.get('x', 0)},{b.get('y', 0)})")
+        if len(belts) > 40:
+            dim(f"     ... {len(belts) - 40} more")
+    else:
+        dim("  (none — belt submenu not open)")
+
+    # ===== 12. СТАТУС БОТА =====
     header("== BOT STATUS ==")
     mode = str(state.combat_mode_active or "IDLE")
     mode_tag = 'danger' if mode == 'SAFETY' else ('good' if mode == 'IDLE' else 'warn')
     add(mode_tag, f"  combat mode: {mode}")
     dim(f"  is_loading: {state.is_loading}   is_pvp: {state.is_pvp}")
 
-    # ===== 14. ТЕХНИЧЕСКАЯ ИНФОРМАЦИЯ =====
+    # ===== 13. ТЕХНИЧЕСКАЯ ИНФОРМАЦИЯ =====
     header("== TECH ==")
     dim(f"  window: {state.window_width} x {state.window_height}")
     dim(f"  ui_root_address: 0x{state.ui_root_address:X}")
     dim(f"  updated: {ts}")
 
     return blocks
+
