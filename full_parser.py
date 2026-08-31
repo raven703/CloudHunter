@@ -269,34 +269,58 @@ def parse_hp_gauges(root: Dict) -> Dict[str, float]:
 # ==================== ПАРСЕР СКОРОСТИ ====================
 
 def parse_speed(root: Dict) -> float:
-    """Парсинг скорости корабля"""
+    """Парсинг скорости корабля.
+
+    Реальная структура sppedLabel в JSON:
+      ShipUI -> HudContainer -> CenterHudContainer -> SpeedGauge
+        -> Container -> Container -> EveLabelSmall(_name='speedLabel', _setText='262 m/s')
+
+    Ищем метку speedLabel РЕКУРСИВНО в поддереве SpeedGauge.
+    Поддерживаются: 'm/s', 'km/s', 'AU/s' / 'au/s' (переводится в метры).
+    """
     ship_ui = find_first_by_type(root, 'ShipUI')
     if not ship_ui:
         return 0.0
-    
-    hud_container = find_first_by_type(ship_ui, 'HudContainer')
-    if not hud_container:
-        return 0.0
-    
-    center_hud = find_first_by_type(hud_container, 'CenterHudContainer')
-    if not center_hud:
-        return 0.0
-    
-    speed_gauge = find_first_by_type(center_hud, 'SpeedGauge')
+
+    speed_gauge = find_first_by_type(ship_ui, 'SpeedGauge')
     if not speed_gauge:
         return 0.0
-    
-    # Ищем label со скоростью
-    for child in speed_gauge.get('children', []):
-        for sub in child.get('children', []):
-            if sub.get('pythonObjectTypeName') == 'EveLabelSmall':
-                ei = sub.get('dictEntriesOfInterest', {})
-                if ei.get('_name') == 'speedLabel':
-                    text = clean_html(str(ei.get('_setText', '')))
-                    match = re.search(r'([\d.]+)\s*m/s', text)
-                    if match:
-                        return float(match.group(1))
-    
+
+    # Рекурсивно ищем любой узел с _name == 'speedLabel'
+    def find_speed_label(node):
+        if not isinstance(node, dict):
+            return None
+        ei = node.get('dictEntriesOfInterest', {}) or {}
+        if ei.get('_name') == 'speedLabel':
+            return node
+        for child in node.get('children', []) or []:
+            res = find_speed_label(child)
+            if res is not None:
+                return res
+        return None
+
+    label = find_speed_label(speed_gauge)
+    if label is None:
+        return 0.0
+
+    ei = label.get('dictEntriesOfInterest', {}) or {}
+    for key in ('_setText', '_text'):
+        text = clean_html(str(ei.get(key, '')))
+        if not text:
+            continue
+        # m/s
+        match = re.search(r'([\d.]+)\s*m/s', text, re.IGNORECASE)
+        if match:
+            return float(match.group(1))
+        # AU/s (в варпе) -> переводим в метры
+        match = re.search(r'([\d.]+)\s*a[uд]?\s*/s', text, re.IGNORECASE)
+        if match:
+            return float(match.group(1)) * 149597870700.0
+        # km/s
+        match = re.search(r'([\d.]+)\s*km/s', text, re.IGNORECASE)
+        if match:
+            return float(match.group(1)) * 1000.0
+
     return 0.0
 
 
@@ -373,7 +397,16 @@ def parse_modules(root: Dict) -> Dict[str, Any]:
 # ==================== ПАРСЕР ДРОНОВ ====================
 
 def parse_drones(root: Dict) -> Dict[str, Any]:
-    """Парсинг окна дронов"""
+    """Парсинг окна дронов.
+
+    Реальная структура в JSON:
+      заголовки:  DronesWindow -> Container -> Container -> DroneGroupHeaderInBay/InSpace
+                    -> ContainerAutoSize -> EveLabelMedium (_setText='Drones in Bay (14)')
+      scroll:      DronesWindow -> Container -> Container -> ContainerAutoSize
+                    -> Scroll(_name='dronesInSpaceScroll')
+      записи:      ... -> Scroll -> Container -> Container -> Container
+                    -> DroneInSpaceEntry
+    """
     result = {
         'in_bay': 0,
         'in_space': 0,
@@ -384,92 +417,166 @@ def parse_drones(root: Dict) -> Dict[str, Any]:
         'under_attack': False,
         'entries': []
     }
-    
+
     drones_window = find_first_by_type(root, 'DronesWindow')
     if not drones_window:
         return result
-    
-    # Парсим заголовки
-    for child in drones_window.get('children', []):
-        if child.get('pythonObjectTypeName') == 'Container':
-            # Ищем заголовки
-            for sub in child.get('children', []):
-                if sub.get('pythonObjectTypeName') == 'EveLabelMedium':
-                    text = get_node_text(sub)
-                    nums = re.findall(r'\d+', text)
-                    if 'Drones in Bay' in text:
-                        if nums:
-                            result['in_bay'] = int(nums[0])
-                    elif 'Drones in Space' in text:
-                        if nums:
-                            result['in_space'] = int(nums[0])
-                            if len(nums) > 1:
-                                result['max'] = int(nums[1])
-    
-    # Парсим записи дронов в космосе
-    space_scroll = None
-    for child in drones_window.get('children', []):
-        if child.get('pythonObjectTypeName') == 'Container':
-            for sub in child.get('children', []):
-                if sub.get('pythonObjectTypeName') == 'ContainerAutoSize':
-                    if sub.get('dictEntriesOfInterest', {}).get('_name') == 'bottomCont':
-                        for scroll in sub.get('children', []):
-                            if scroll.get('pythonObjectTypeName') == 'Scroll':
-                                if scroll.get('dictEntriesOfInterest', {}).get('_name') == 'dronesInSpaceScroll':
-                                    space_scroll = scroll
-                                    break
-    
-    if space_scroll:
-        for entry in space_scroll.get('children', []):
-            if entry.get('pythonObjectTypeName') == 'Container':
-                for sub in entry.get('children', []):
-                    if sub.get('pythonObjectTypeName') == 'Container':
-                        for content in sub.get('children', []):
-                            if content.get('pythonObjectTypeName') == 'Container':
-                                for drone_entry in content.get('children', []):
-                                    if drone_entry.get('pythonObjectTypeName') == 'DroneInSpaceEntry':
-                                        result['entries'].append(parse_drone_entry(drone_entry))
-    
+
+    # --- 1. Заголовки "Drones in Bay (N)" / "Drones in Space (N/M)" ---
+    # Рекурсивно ищем любые Label с текстом заголовков
+    def walk(node):
+        if not isinstance(node, dict):
+            return
+        ei = node.get('dictEntriesOfInterest', {}) or {}
+        txt = clean_html(str(ei.get('_setText', '') or ei.get('_text', '')))
+        nums = re.findall(r'\d+', txt)
+        if 'Drones in Bay' in txt and nums:
+            result['in_bay'] = int(nums[0])
+        elif 'Drones in Space' in txt:
+            if nums:
+                result['in_space'] = int(nums[0])
+            if len(nums) > 1:
+                result['max'] = int(nums[1])
+        # Полоска урона дрона (droneGaugeBarDmg): ширина > 0 => дрон под атакой
+        if 'droneGaugeBarDmg' in str(ei.get('_name', '')):
+            w = ei.get('_displayWidth', ei.get('_width', 0))
+            if isinstance(w, dict):
+                w = w.get('int_low32', 0)
+            if isinstance(w, (int, float)) and w > 2:
+                result['under_attack'] = True
+
+        for child in node.get('children', []) or []:
+            walk(child)
+
+    walk(drones_window)
+
+    # --- 2. Записи дронов в космосе ---
+    # РЕАЛЬНАЯ структура вложенности:
+    #   Scroll(_name='dronesInSpaceScroll') -> Container(maincontainer)
+    #     -> Container(__clipper) -> Container(__content) -> DroneInSpaceEntry
+    # поэтому ищем записи РЕКУРСИВНО по всему поддереву окна.
+    space_entries = []
+
+    def collect_entries(node, acc):
+        if not isinstance(node, dict):
+            return
+        if node.get('pythonObjectTypeName') == 'DroneInSpaceEntry':
+            acc.append(node)
+        for child in node.get('children', []) or []:
+            collect_entries(child, acc)
+
+    collect_entries(drones_window, space_entries)
+
+    # --- 3. Статусы дронов — по записям в космосе (stateSprite._hint) ---
+    for entry in space_entries:
+        parsed = parse_drone_entry(entry)
+        if parsed and (parsed.get('name') or parsed.get('status')):
+            result['entries'].append(parsed)
+            # Уточняем статусы по записям
+            st = parsed.get('status', '')
+            if st == 'IDLE':
+                result['idle'] = True
+            elif st == 'FIGHTING':
+                result['fighting'] = True
+            elif st == 'RETURNING':
+                result['returning'] = True
+
+    # Нет дронов в космосе => активных статусов нет (все в ангаре)
+    if not result['entries'] and result['in_space'] == 0:
+        result['idle'] = False
+        result['fighting'] = False
+        result['returning'] = False
+
     return result
 
 
 def parse_drone_entry(entry_node: Dict) -> Dict:
-    """Парсинг одной записи дрона"""
+    """Парсинг одной записи дрона (DroneInSpaceEntry).
+
+    Реальная структура:
+      DroneInSpaceEntry
+        -> Container(mainCont) -> Container(textClipper)
+             -> TextBody(_name='entryLabel',
+                         _setText='Caldari Navy Vespa <color=#FF8DC169>Idle</color>')
+        -> Sprite(_name='stateSprite', _hint='Idle')
+        -> Container(gaugesParent) -> ... (полосы HP)
+
+    Имя — часть текста ДО <color>..., статус — из <color>...</color> или _hint.
+    """
     result = {
         'name': '',
         'status': 'UNKNOWN',
         'hp': 100.0,
         'under_attack': False
     }
-    
-    # Ищем имя и статус
-    for child in entry_node.get('children', []):
-        if child.get('pythonObjectTypeName') == 'Container':
-            for sub in child.get('children', []):
-                if sub.get('pythonObjectTypeName') == 'Container':
-                    for text_sub in sub.get('children', []):
-                        if text_sub.get('pythonObjectTypeName') == 'TextBody':
-                            text = get_node_text(text_sub)
-                            # Ищем статус в цвете
-                            if 'Idle' in text:
-                                result['status'] = 'IDLE'
-                            elif 'Fighting' in text:
-                                result['status'] = 'FIGHTING'
-                            elif 'Returning' in text:
-                                result['status'] = 'RETURNING'
-                            # Очищаем имя от статуса
-                            result['name'] = re.sub(r'<[^>]+>', '', text).strip()
-        
-        # Проверяем состояние
-        if child.get('pythonObjectTypeName') == 'Sprite':
-            hint = child.get('dictEntriesOfInterest', {}).get('_hint', '')
-            if hint == 'Idle':
-                pass  # уже обработано
-            elif hint == 'Fighting':
-                result['status'] = 'FIGHTING'
-            elif hint == 'Returning':
-                result['status'] = 'RETURNING'
-    
+
+    name_candidates = []
+    status_candidates = []
+
+    def walk(node, depth=0):
+        if not isinstance(node, dict) or depth > 6:
+            return
+        t = node.get('pythonObjectTypeName', '')
+        ei = node.get('dictEntriesOfInterest', {}) or {}
+
+        if t == 'TextBody':
+            raw = str(ei.get('_setText', '') or ei.get('_text', '') or '')
+            text = clean_html(raw)
+            if text:
+                name_candidates.append((raw, text))
+
+        if t == 'Sprite':
+            hint = str(ei.get('_hint', '') or '')
+            if hint:
+                status_candidates.append(hint)
+
+        for child in node.get('children', []) or []:
+            walk(child, depth + 1)
+
+    walk(entry_node)
+
+    # Статус: из _hint спрайта (приоритет) или из <color>...</color> в тексте.
+    # Возможные _hint у stateSprite в EVE: 'Idle', 'Attacking', 'Fighting',
+    # 'Engaging', 'Returning', 'Mining', 'Following'...
+    def _st_from_text(low):
+        if 'idle' in low:
+            return 'IDLE'
+        if 'returning' in low:
+            return 'RETURNING'
+        if 'attack' in low or 'fight' in low or 'engag' in low:
+            return 'FIGHTING'
+        return None
+
+    for hint in status_candidates:
+        st = _st_from_text(str(hint).lower())
+        if st:
+            result['status'] = st
+
+    # Имя: часть текста ДО цветового статуса
+    for raw, text in name_candidates:
+        # 'Caldari Navy Vespa <color=#FF8DC169>Idle</color>'
+        m = re.search(r'<color[^>]*>([^<]+)</color>', raw)
+        if m:
+            st = _st_from_text(m.group(1).strip().lower())
+            if st:
+                result['status'] = st
+            # имя = текст до <color
+            name_part = raw.split('<color')[0].strip()
+            name = clean_html(name_part)
+            if name:
+                result['name'] = name
+        elif text and not result['name']:
+            # нет цветового тега — имя это весь текст (вырезаем слово-статус)
+            result['name'] = re.sub(r'\b(Idle|Fighting|Returning|Attacking|Engaging)\b', '', text, flags=re.I).strip()
+
+    # Если имя так и не нашли, а статус остался в тексте — отрезаем хвост
+    if not result['name'] and name_candidates:
+        m = re.match(r'^([^<]+?)\s*<color', name_candidates[0][0])
+        if m:
+            result['name'] = clean_html(m.group(1))
+        else:
+            result['name'] = name_candidates[0][1]
+
     return result
 
 
@@ -1254,30 +1361,42 @@ def parse_ui_root(json_data: Dict) -> ParsedUIState:
         if color.get('aPercent', 0) == 0 and color.get('rPercent', 0) == 0:
             state.is_loading = True
     
-    # Проверяем состояние варпа через индикацию
-    for child in root.get('children', []):
-        if child.get('pythonObjectTypeName') == 'LayerCore':
-            if child.get('dictEntriesOfInterest', {}).get('_name') == 'l_viewstate':
-                for sub in child.get('children', []):
-                    if sub.get('pythonObjectTypeName') == 'LayerCore':
-                        if sub.get('dictEntriesOfInterest', {}).get('_name') == 'l_view_overlays':
-                            for overlay in sub.get('children', []):
-                                if overlay.get('pythonObjectTypeName') == 'LayerCore':
-                                    if overlay.get('dictEntriesOfInterest', {}).get('_name') == 'l_inflight':
-                                        for inflight in overlay.get('children', []):
-                                            if inflight.get('pythonObjectTypeName') == 'HudActionIndicationContainer':
-                                                for indication in inflight.get('children', []):
-                                                    if indication.get('pythonObjectTypeName') == 'IndicationMessageStandard':
-                                                        text = get_node_text(indication)
-                                                        if 'Warp Drive Active' in text:
-                                                            state.is_warp = True
-                                                        elif 'Establishing Warp Vector' in text:
-                                                            state.is_establishing = True
-                                                        elif 'Orbiting' in text:
-                                                            state.is_orbiting = True
-                                                        elif 'Docked' in text:
-                                                            state.is_docked = True
-    
+    # ====== СТАТУС КОРАБЛЯ (warp / aligning / orbit / docked) ======
+    # Реальная структура индикации:
+    #   ShipUI -> HudContainer -> HudActionIndicationContainer
+    #     -> IndicationMessageStandard -> TextBody('indication_text', _setText='Warp Drive Active')
+    indication_container = find_first_by_type(root, 'HudActionIndicationContainer')
+    if indication_container:
+        texts = []
+        def collect_texts(node):
+            if not isinstance(node, dict):
+                return
+            ei = node.get('dictEntriesOfInterest', {}) or {}
+            raw = ei.get('_setText') or ei.get('_text') or ''
+            if raw:
+                texts.append(clean_html(str(raw)))
+            for child in node.get('children', []) or []:
+                collect_texts(child)
+        collect_texts(indication_container)
+        joined = ' | '.join(texts).lower()
+        if 'warp drive active' in joined or 'warping' in joined or 'warped' in joined:
+            state.is_warp = True
+        if 'establishing warp vector' in joined or 'aligning' in joined or 'align' in joined:
+            state.is_establishing = True
+        if 'orbiting' in joined:
+            state.is_orbiting = True
+        if 'docked' in joined:
+            state.is_docked = True
+
+    # Fallback 1: скорость в варпе огромная
+    if not state.is_warp and state.speed > 100000:
+        state.is_warp = True
+
+    # Fallback 2: docked - наличие интерфейса станции
+    if not state.is_docked:
+        if find_first_by_type(root, 'UndockButton') or find_first_by_type(root, 'HangarLayer'):
+            state.is_docked = True
+
     return state
 
 # ==================== ПРИМЕР ИСПОЛЬЗОВАНИЯ ====================

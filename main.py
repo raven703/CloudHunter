@@ -13,8 +13,8 @@ import os
 
 # Твои рабочие модули
 from client import EveClient
-from parser import EveParser
 from bot import EveBot
+from new_parser import format_new_state_report, STANDING_COLORS, STANDING_UNKNOWN, build_debug_blocks
 
 class WidgetLogger:
     def __init__(self, callback):
@@ -38,6 +38,216 @@ class DebugWindow(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self.withdraw)
         self.withdraw()
 
+class ComparisonWindow(tk.Toplevel):
+    """Окно сравнения СТАРОГО и НОВОГО парсеров (пилоты локального чата)."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("PARSER COMPARISON")
+        self.geometry("560x720+20+20")
+        self.configure(bg='#0d0d0d')
+
+        frame = tk.Frame(self, bg='#0d0d0d')
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        self.text = tk.Text(frame, bg='#0d0d0d', fg='#dddddd', font=("Consolas", 10),
+                            wrap='word', padx=12, pady=12, relief='flat', state='disabled')
+        scroll = tk.Scrollbar(frame, command=self.text.yview)
+        self.text.configure(yscrollcommand=scroll.set)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.text.pack(fill=tk.BOTH, expand=True)
+
+        # Цветовые теги для оформления
+        self.text.tag_configure('title', foreground='#ffcc55', font=("Consolas", 11, "bold"))
+        self.text.tag_configure('header', foreground='#88ddff', font=("Consolas", 10, "bold"))
+        self.text.tag_configure('note', foreground='#ff8888')
+        self.text.tag_configure('ok', foreground='#88ff88')
+        self.text.tag_configure('dim', foreground='#999999')
+        for st, color in STANDING_COLORS.items():
+            self.text.tag_configure(st, foreground=color)
+
+        # Закрытие прячет окно, а не убивает
+        self.protocol("WM_DELETE_WINDOW", self.withdraw)
+        self.withdraw()
+
+    def update_comparison(self, comparison):
+        """Полное переписывание содержимого окна данными сравнения."""
+        if not self.winfo_exists():
+            return
+
+        self.text.config(state="normal")
+        self.text.delete("1.0", tk.END)
+
+        ts = comparison.get('timestamp', time.time())
+        self.text.insert(tk.END,
+            f"=== PARSER COMPARISON @ {time.strftime('%H:%M:%S', time.localtime(ts))} ===\n",
+            'title')
+
+        old = comparison.get('old', {})
+        new = comparison.get('new', {})
+
+        # --- СТАРЫЙ парсер (то, на чём работает бот) ---
+        self.text.insert(tk.END, "\n[OLD parser - bot data]\n", 'header')
+        self.text.insert(tk.END,
+            f"  pilots listed : {old.get('player_count', 0)}\n"
+            f"  neutral flag  : {old.get('has_neutral')}\n"
+            f"  hostile flag  : {old.get('has_hostile')}\n",
+            'dim')
+        if old.get('error'):
+            self.text.insert(tk.END, f"  ERROR: {old['error']}\n", 'note')
+
+        # --- НОВЫЙ парсер (правильный разбор локала) ---
+        self.text.insert(tk.END, "\n[NEW parser - comparison]\n", 'header')
+        self.text.insert(tk.END,
+            f"  pilots found  : {new.get('player_count', 0)}\n"
+            f"  neutral       : {new.get('has_neutral')}\n"
+            f"  hostile       : {new.get('has_hostile')}\n",
+            'dim')
+        if new.get('error'):
+            self.text.insert(tk.END, f"  ERROR: {new['error']}\n", 'note')
+
+        match = comparison.get('match', True)
+        self.text.insert(tk.END, f"\nMATCH: {'YES' if match else 'NO'}\n",
+                         'ok' if match else 'note')
+
+        notes = comparison.get('notes') or []
+        if notes:
+            self.text.insert(tk.END, "\nNOTES:\n", 'header')
+            for n in notes:
+                self.text.insert(tk.END, f"  - {n}\n", 'dim' if match else 'note')
+
+        # --- Все пилоты, найденные НОВЫМ парсером (цвет по статусу) ---
+        self.text.insert(tk.END, "\nNEW PARSER PILOTS (full list)\n", 'header')
+        players = new.get('players') or []
+        if not players:
+            self.text.insert(tk.END, "  (no pilots detected)\n", 'dim')
+
+        for p in players:
+            st = p.get('standing') or STANDING_UNKNOWN
+            tag = st if st in STANDING_COLORS else STANDING_UNKNOWN
+            self.text.insert(tk.END, f"  [{st:<11}] ", 'dim')
+            self.text.insert(tk.END, p.get('name', ''), tag)
+            if p.get('alliance'):
+                self.text.insert(tk.END, "  (alliance)", 'dim')
+            self.text.insert(tk.END, "\n")
+
+        self.text.see("1.0")
+        self.text.config(state="disabled")
+
+
+class ParserDebugWindow(tk.Toplevel):
+    """Полноценное окно отладки НОВОГО парсера.
+
+    Показывает все данные, которые извлекает EveParserNew:
+    корабль, модули, дроны, цели, овервью, NPC, локальный чат,
+    проб-сканер, инфо-панель, неоком, меню, статус бота и технику.
+
+    Возможности:
+      - моноширинный текст + скроллбар;
+      - цветовое кодирование (danger/warn/info/good/dim);
+      - кнопка REFRESH (принудительное обновление из последнего состояния);
+      - чекбокс ALWAYS ON TOP;
+      - чекбокс AUTO-SCROLL.
+    """
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.title("NEW PARSER DEBUG")
+        self.geometry("860x820+380+20")
+        self.configure(bg='#0a0a0a')
+
+        self._latest_state = None
+
+        # --- Панель управления ---
+        toolbar = tk.Frame(self, bg='#1a1a1a')
+        toolbar.pack(fill=tk.X, pady=(4, 2), padx=6)
+
+        self.btn_refresh = tk.Button(toolbar, text="REFRESH", bg='#37474f', fg='white',
+                                     command=self.force_refresh, relief='flat', font=("Arial", 9, "bold"))
+        self.btn_refresh.pack(side=tk.LEFT, padx=(0, 8))
+
+        self.top_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(toolbar, text="ALWAYS ON TOP", variable=self.top_var, command=self._toggle_topmost,
+                       bg='#1a1a1a', fg='#88ddff', selectcolor='#1a1a1a',
+                       activebackground='#1a1a1a', activeforeground='#88ddff').pack(side=tk.LEFT, padx=4)
+
+        self.auto_scroll_var = tk.BooleanVar(value=True)
+        tk.Checkbutton(toolbar, text="AUTO-SCROLL", variable=self.auto_scroll_var,
+                       bg='#1a1a1a', fg='#88ddff', selectcolor='#1a1a1a',
+                       activebackground='#1a1a1a', activeforeground='#88ddff').pack(side=tk.LEFT, padx=4)
+
+        # --- Текстовое поле ---
+        frame = tk.Frame(self, bg='#0a0a0a')
+        frame.pack(fill=tk.BOTH, expand=True, padx=6, pady=(2, 6))
+
+        self.text = tk.Text(frame, bg='#0a0a0a', fg='#cccccc', font=("Consolas", 9),
+                            wrap='none', padx=8, pady=8, relief='flat', state='disabled')
+        scroll_y = tk.Scrollbar(frame, command=self.text.yview)
+        scroll_x = tk.Scrollbar(frame, orient='horizontal', command=self.text.xview)
+        self.text.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
+        scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
+        scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
+        self.text.pack(fill=tk.BOTH, expand=True)
+
+        # --- Цветовые теги ---
+        self.text.tag_configure('title', foreground='#ffcc55', font=("Consolas", 11, "bold"))
+        self.text.tag_configure('header', foreground='#88ddff', font=("Consolas", 10, "bold"))
+        self.text.tag_configure('good', foreground='#88ff88')
+        self.text.tag_configure('warn', foreground='#ffcc00')
+        self.text.tag_configure('danger', foreground='#ff5555')
+        self.text.tag_configure('info', foreground='#88ddff')
+        self.text.tag_configure('dim', foreground='#777777')
+        for st, color in STANDING_COLORS.items():
+            self.text.tag_configure(st, foreground=color)
+
+        # Закрытие прячет окно, а не убивает
+        self.protocol("WM_DELETE_WINDOW", self.withdraw)
+        self.withdraw()
+
+    def _toggle_topmost(self):
+        try:
+            self.attributes("-topmost", self.top_var.get())
+        except tk.TclError:
+            pass
+
+    def set_state(self, state):
+        """Принять новое состояние нового парсера и перерисовать."""
+        self._latest_state = state
+        self.render()
+
+    def force_refresh(self):
+        """Принудительная перерисовка из последнего сохранённого состояния."""
+        if self._latest_state is not None:
+            self.render()
+
+    def render(self):
+        if not self.winfo_exists():
+            return
+        if self._latest_state is None:
+            return
+
+        blocks = build_debug_blocks(self._latest_state)
+
+        # Сохраняем позицию скролла, если авто-скролл выключен
+        yview = self.text.yview()
+        was_disabled = str(self.text.cget('state')) == 'disabled'
+        self.text.config(state="normal")
+        self.text.delete("1.0", tk.END)
+
+        for tag, text in blocks:
+            self.text.insert(tk.END, text + "\n", tag)
+
+        if self.auto_scroll_var.get():
+            self.text.see(tk.END)
+        else:
+            try:
+                self.text.yview_moveto(yview[0])
+            except tk.TclError:
+                pass
+        self.text.config(state="disabled")
+        _ = was_disabled
+
+
 class EveApp:
     def __init__(self, exe_path):
         # Перехватываем и ошибки, и обычный вывод        
@@ -55,12 +265,16 @@ class EveApp:
         
         self.build_ui()
         self.debug_window = DebugWindow(self.root)
+        self.comparison_window = ComparisonWindow(self.root)
+        self.parser_debug_window = ParserDebugWindow(self.root)
 
         self.stderr_redirector = WidgetLogger(self.log_safe)
         sys.stderr = self.stderr_redirector
 
-        self.client = EveClient(exe_path)
-        self.parser = EveParser()
+        self.client = EveClient(exe_path, comparison_callback=self.on_comparison,
+                                state_callback=self.on_new_state)
+        # Парсинг выполняется в client.py (_parse_loop) старым EveParser;
+        # main.py использует уже готовый (state, draw_list) из очереди.
         self.bot = EveBot()
         
         self.running = False
@@ -122,6 +336,14 @@ class EveApp:
         self.btn_stop = tk.Button(btn_frame, text="STOP BOT", bg='#b71c1c', fg='white', command=self.stop_bot, height=2, state="disabled", font=("Arial", 10, "bold"))
         self.btn_stop.pack(fill=tk.X, pady=2)
 
+        self.btn_comparison = tk.Button(btn_frame, text="SHOW PARSER COMPARISON", bg='#37474f', fg='white',
+                                        command=self.toggle_comparison, height=1, font=("Arial", 9, "bold"))
+        self.btn_comparison.pack(fill=tk.X, pady=2)
+
+        self.btn_parser_debug = tk.Button(btn_frame, text="SHOW NEW PARSER DEBUG", bg='#37474f', fg='white',
+                                          command=self.toggle_parser_debug, height=1, font=("Arial", 9, "bold"))
+        self.btn_parser_debug.pack(fill=tk.X, pady=2)
+
         opts_frame = tk.Frame(self.root, bg='#1a1a1a', padx=10, pady=5)
         opts_frame.pack(fill=tk.X)
         
@@ -154,6 +376,57 @@ class EveApp:
     def toggle_debug(self):
         if self.debug_var.get(): self.debug_window.deiconify()
         else: self.debug_window.withdraw()
+
+    def on_comparison(self, comparison):
+        """Callback из потока парсинга (client): перекидываем в GUI-поток."""
+        try:
+            self.root.after(0, self._apply_comparison, comparison)
+        except Exception:
+            pass
+
+    def _apply_comparison(self, comparison):
+        if not self.comparison_window or not self.comparison_window.winfo_exists():
+            return
+        self.comparison_window.update_comparison(comparison)
+
+    def toggle_comparison(self):
+        """Показать/скрыть окно сравнения парсеров."""
+        if not self.comparison_window or not self.comparison_window.winfo_exists():
+            return
+        if self.comparison_window.state() == "normal":
+            self.comparison_window.withdraw()
+            self.btn_comparison.config(text="SHOW PARSER COMPARISON")
+        else:
+            self.comparison_window.deiconify()
+            self.comparison_window.lift()
+            self.btn_comparison.config(text="HIDE PARSER COMPARISON")
+
+    def on_new_state(self, state):
+        """Callback из потока парсинга (client): перекидываем в GUI-поток."""
+        try:
+            self.root.after(0, self._apply_new_state, state)
+        except Exception:
+            pass
+
+    def _apply_new_state(self, state):
+        if not self.parser_debug_window or not self.parser_debug_window.winfo_exists():
+            return
+        self.parser_debug_window.set_state(state)
+
+    def toggle_parser_debug(self):
+        """Показать/скрыть окно отладки нового парсера."""
+        if not self.parser_debug_window or not self.parser_debug_window.winfo_exists():
+            return
+        if self.parser_debug_window.state() == "normal":
+            self.parser_debug_window.withdraw()
+            self.btn_parser_debug.config(text="SHOW NEW PARSER DEBUG")
+        else:
+            self.parser_debug_window.deiconify()
+            self.parser_debug_window.lift()
+            # Сразу показываем последнее известное состояние, если оно есть
+            if self.parser_debug_window._latest_state is not None:
+                self.parser_debug_window.render()
+            self.btn_parser_debug.config(text="HIDE NEW PARSER DEBUG")
 
     def start_bot(self):
         self.running = True
@@ -248,8 +521,8 @@ class EveApp:
     def logic_loop(self):
         if not self.root.winfo_exists(): return
         try:
-            data = self.client.queue.get_nowait()
-            state, draw_list = self.parser.parse(data)
+            state, draw_list = self.client.queue.get_nowait()
+            # (state, draw_list) уже готовы — их положил client._parse_loop
             
             # Обновление текста состояния (с возможностью выделения)
             self.status_view.config(state="normal")
