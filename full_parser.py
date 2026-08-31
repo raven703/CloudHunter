@@ -221,59 +221,130 @@ def parse_menu_entry(entry_node: Dict) -> Dict:
 
 # ==================== ПАРСЕР HP КОРАБЛЯ ====================
 
-def parse_hp_gauges(root: Dict) -> Dict[str, float]:
-    """Парсинг HP корабля"""
-    result = {
-        'shield': 100.0,
-        'armor': 100.0,
-        'structure': 100.0,
-        'capacitor': 100.0
+def _to_float(val: Any) -> Optional[float]:
+    """Безопасное преобразование значения дампа в float (None если не число)."""
+    if isinstance(val, bool):
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, dict):
+        # Вариант упаковки 64-битного числа: {'int': ..., 'int_low32': ...}
+        for key in ('float_low32', 'int_low32'):
+            low = val.get(key)
+            if isinstance(low, (int, float)) and not isinstance(low, bool):
+                return float(low)
+    return None
+
+
+def _parse_capacitor_cells(cap_node: Dict) -> Optional[float]:
+    """Уровень капаситора (%) по кольцу ячеек внутри CapacitorContainer.
+
+    Кольцо = 18 колонок (Transform 'powerColumn') x 4 ячейки (Sprite 'pmark')
+    = 72 ячейки. Заполненная ячейка: _color.aPercent > 0 (обычно 50),
+    пустая: _color.aPercent == 0. Спрайт 'powerblink'
+    (capacitorCellGlow.png) — мерцающая ячейка на границе заполнения,
+    в подсчёте не участвует. Точность — одна ячейка (~1.4%).
+
+    Fallback: если 'pmark' не найдены, пробуем любой дочерний узел с
+    _lastValue (на случай изменения структуры дампа в будущих патчах).
+    """
+    filled = 0
+    total = 0
+    for col in cap_node.get('children', []) or []:
+        if not isinstance(col, dict):
+            continue
+        for spr in col.get('children', []) or []:
+            if not isinstance(spr, dict):
+                continue
+            ei = spr.get('dictEntriesOfInterest', {}) or {}
+            if ei.get('_name') != 'pmark':
+                continue
+            total += 1
+            color = ei.get('_color') or {}
+            alpha = _to_float(color.get('aPercent'))
+            if alpha is not None and alpha > 0:
+                filled += 1
+    if total > 0:
+        return max(0.0, min(100.0, filled / total * 100.0))
+
+    # Fallback: gauge-узел с _lastValue внутри CapacitorContainer.
+    stack = list(cap_node.get('children', []) or [])
+    while stack:
+        node = stack.pop(0)
+        if not isinstance(node, dict):
+            continue
+        ei = node.get('dictEntriesOfInterest', {}) or {}
+        if '_lastValue' in ei:
+            raw = _to_float(ei.get('_lastValue'))
+            if raw is not None:
+                return max(0.0, min(100.0, raw * 100.0))
+        stack.extend(node.get('children', []) or [])
+    return None
+
+
+def parse_hp_gauges(root: Dict) -> Dict[str, Optional[float]]:
+    """Парсинг HP корабля: shield / armor / structure / capacitor в процентах.
+
+    Для показателя, который прочитать не удалось, возвращается None
+    ("нет данных"), а НЕ фейковые 100%:
+      * ShipUI -> HudContainer -> CenterHudContainer -> HPGauges не найдены
+        (в доке, на экране загрузки и т.п.);
+      * у ShipHudSpriteGauge отсутствует атрибут _lastValue.
+
+    _lastValue гейджа — доля заполнения 0..1 (ею клиент рисует полосу HP),
+    поэтому shield/armor/structure парсятся именно из него.
+
+    Капаситор: кольцо из 18 колонок (powerColumn) x 4 ячеек (Sprite 'pmark')
+    = 72 ячейки внутри CapacitorContainer. Заполненная ячейка имеет
+    _color.aPercent > 0 (обычно 50), пустая — aPercent == 0; 'powerblink'
+    (capacitorCellGlow.png) — мерцающая ячейка на границе заполнения.
+    Процент = заполненные ячейки / все ячейки (шаг ~1.4%).
+    См. _parse_capacitor_cells().
+    """
+    result: Dict[str, Optional[float]] = {
+        'shield': None,
+        'armor': None,
+        'structure': None,
+        'capacitor': None,
     }
-    
+
     # Ищем ShipUI → HPGauges
     ship_ui = find_first_by_type(root, 'ShipUI')
     if not ship_ui:
         return result
-    
+
     hud_container = find_first_by_type(ship_ui, 'HudContainer')
     if not hud_container:
         return result
-    
+
     center_hud = find_first_by_type(hud_container, 'CenterHudContainer')
     if not center_hud:
         return result
-    
+
     hp_gauges = find_first_by_type(center_hud, 'HPGauges')
-    if not hp_gauges:
-        return result
-    
-    # Парсим каждый gauge
-    for child in hp_gauges.get('children', []):
-        if child.get('pythonObjectTypeName') == 'ShipHudSpriteGauge':
-            ei = child.get('dictEntriesOfInterest', {})
-            name = str(ei.get('_name', ''))
-            value = float(ei.get('_lastValue', 1.0)) * 100
-            
-            if 'shield' in name.lower():
+    if hp_gauges:
+        # Парсим каждый gauge
+        for child in hp_gauges.get('children', []):
+            if child.get('pythonObjectTypeName') != 'ShipHudSpriteGauge':
+                continue
+            ei = child.get('dictEntriesOfInterest', {}) or {}
+            name = str(ei.get('_name', '')).lower()
+            raw = _to_float(ei.get('_lastValue'))
+            if raw is None:
+                continue
+            value = max(0.0, min(100.0, raw * 100.0))
+            if 'shield' in name:
                 result['shield'] = value
-            elif 'armor' in name.lower():
+            elif 'armor' in name:
                 result['armor'] = value
-            elif 'structure' in name.lower():
+            elif 'structure' in name:
                 result['structure'] = value
-    
-    # Парсим Capacitor
+
+    # Парсим Capacitor (кольцо из ячеек pmark, см. _parse_capacitor_cells).
     capacitor = find_first_by_type(center_hud, 'CapacitorContainer')
     if capacitor:
-        # Капаситор определяется по количеству заполненных ячеек
-        # или по _lastValue если есть
-        for child in capacitor.get('children', []):
-            if child.get('pythonObjectTypeName') == 'Transform':
-                ei = child.get('dictEntriesOfInterest', {})
-                opacity = float(ei.get('_opacity', 0))
-                # opacity > 0.5 значит ячейка активна
-                # Упрощенно - считаем среднее по всем ячейкам
-                # В реальном парсере нужно анализировать каждую ячейку
-    
+        result['capacitor'] = _parse_capacitor_cells(capacitor)
+
     return result
 
 
@@ -1438,7 +1509,11 @@ def main():
     print(f"=== EVE UI PARSER RESULTS ===")
     print(f"Window: {state.window_width}x{state.window_height}")
     print(f"Menu open: {state.menu_open} ({state.menu_type})")
-    print(f"HP: Shield={state.shield_pct:.1f}% Armor={state.armor_pct:.1f}% Structure={state.structure_pct:.1f}% Cap={state.capacitor_pct:.1f}%")
+    def _fmt_hp(v):
+        return f"{v:.1f}" if isinstance(v, (int, float)) else "n/a"
+    print(f"HP: Shield={_fmt_hp(state.shield_pct)}% Armor={_fmt_hp(state.armor_pct)}% "
+          f"Structure={_fmt_hp(state.structure_pct)}% Cap={_fmt_hp(state.capacitor_pct)}%")
+
     print(f"Speed: {state.speed:.1f} m/s")
     print(f"Drones: Bay={state.drones_in_bay} Space={state.drones_in_space}/{state.drones_max}")
     print(f"Local: {state.local_player_count} players, Neutral={state.local_has_neutral}, Hostile={state.local_has_hostile}")

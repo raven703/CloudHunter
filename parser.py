@@ -1,11 +1,16 @@
 import re
 from dataclasses import dataclass, field
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 @dataclass
 class WorldState:
-    shield_pct: float = 100.0
-    armor_pct: float = 100.0
+    # None = "нет данных" (в доке/при загрузке гейджей нет).
+    # capacitor считается по кольцу ячеек pmark в CapacitorContainer
+    # (см. _parse_capacitor_cells в full_parser.py).
+    shield_pct: Optional[float] = None
+    armor_pct: Optional[float] = None
+    structure_pct: Optional[float] = None
+    capacitor_pct: Optional[float] = None
     # Для изменяемых типов (dict, list) в dataclass используется default_factory
     modules: dict = field(default_factory=dict)
     targets: Dict[int, dict] = field(default_factory=dict)
@@ -240,12 +245,15 @@ class EveParser:
             })
 
         elif obj_type == "ShipHudSpriteGauge":
-            # Твоя логика HP остается без изменений
-            raw_val = ei.get("_lastValue", 1.0)
-            val = self.get_val(raw_val)
-            percent = float(val) * 100
-            if "shieldGauge" in name: state.shield_pct = percent
-            elif "armorGauge" in name: state.armor_pct = percent
+            # HP корабля: _lastValue — доля заполнения 0..1.
+            # Если атрибута нет — поле остаётся None ("нет данных"),
+            # фейковые 100% не подставляем.
+            raw_val = ei.get("_lastValue")
+            if isinstance(raw_val, (int, float)) and not isinstance(raw_val, bool):
+                percent = float(raw_val) * 100.0
+                if "shieldGauge" in name: state.shield_pct = percent
+                elif "armorGauge" in name: state.armor_pct = percent
+                elif "structureGauge" in name: state.structure_pct = percent
 
     def _check_frames(self, obj_type, name, w, h, draw_list, ax, ay):
         area = w * h

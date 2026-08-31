@@ -12,10 +12,13 @@ class ParsedUIState:
     ui_root_address: int = 0
     
     # === HP КОРАБЛЯ ===
-    shield_pct: float = 100.0
-    armor_pct: float = 100.0
-    structure_pct: float = 100.0
-    capacitor_pct: float = 100.0
+    # None = "нет данных" (в доке, при загрузке, или показатель отсутствует в дампе).
+    # capacitor считается по кольцу ячеек pmark в CapacitorContainer
+    # (см. _parse_capacitor_cells в full_parser.py).
+    shield_pct: Optional[float] = None
+    armor_pct: Optional[float] = None
+    structure_pct: Optional[float] = None
+    capacitor_pct: Optional[float] = None
     
     # === ДВИЖЕНИЕ ===
     speed: float = 0.0  # м/с

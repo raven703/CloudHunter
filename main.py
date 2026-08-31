@@ -467,7 +467,10 @@ class EveApp:
         elif state.is_establishing: nav = "ALIGNING"
         elif state.is_orbiting: nav = "ORBITING"
         report.append(f"NAV: {nav}")
-        report.append(f"SHIP: SHLD {state.shield_pct:.1f}% | ARM {state.armor_pct:.1f}%")
+        def _pct(v):
+            return f"{v:.1f}" if isinstance(v, (int, float)) else "n/a"
+        report.append(f"SHIP: SHLD {_pct(state.shield_pct)}% | ARM {_pct(state.armor_pct)}% | "
+                      f"STRUCT {_pct(getattr(state, 'structure_pct', None))}% | CAP {_pct(getattr(state, 'capacitor_pct', None))}%")
         # --- СТАТУС РЕПОК ---
         if state.repairers:
             rep_status = []

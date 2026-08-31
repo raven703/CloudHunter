@@ -572,7 +572,7 @@ def _format_state_report(state: ParsedUIState) -> str:
     for p in players:
         lines.append(f"  [{p.get('standing', '?'):<11}] {p.get('name', '')}")
     lines.append("")
-    lines.append(f"HP: SHLD {state.shield_pct:.1f}% ARM {state.armor_pct:.1f}%")
+    lines.append(f"HP: SHLD {_fmt_pct(state.shield_pct, 1)}% ARM {_fmt_pct(state.armor_pct, 1)}%")
     return "\n".join(lines)
 # ==================== ОТЧЁТ ДЛЯ ОКНА ОТЛАДКИ ====================
 
@@ -583,6 +583,13 @@ def _pct_tag(pct: float) -> str:
     if pct <= 25.0: return 'danger'
     if pct <= 50.0: return 'warn'
     return 'good'
+
+
+def _fmt_pct(pct: Optional[float], width: int = 5) -> str:
+    """Форматирование процента: None -> 'n/a' (нет данных в дампе)."""
+    if pct is None:
+        return 'n/a'.rjust(width)
+    return f"{float(pct):{width}.1f}"
 
 
 def _bar(pct: float, width: int = 18) -> str:
@@ -670,10 +677,10 @@ def build_debug_blocks(state: ParsedUIState) -> List[Tuple[str, str]]:
 
     # ===== 1. КОРАБЛЬ =====
     header("== SHIP (HP / SPEED) ==")
-    add('good', f"  shield    {_bar(state.shield_pct)} {state.shield_pct:5.1f}%")
-    add(_pct_tag(state.armor_pct), f"  armor     {_bar(state.armor_pct)} {state.armor_pct:5.1f}%")
-    add(_pct_tag(state.structure_pct), f"  structure {_bar(state.structure_pct)} {state.structure_pct:5.1f}%")
-    add(_pct_tag(state.capacitor_pct), f"  capacitor {_bar(state.capacitor_pct)} {state.capacitor_pct:5.1f}%")
+    add(_pct_tag(state.shield_pct), f"  shield    {_bar(state.shield_pct)} {_fmt_pct(state.shield_pct)}%")
+    add(_pct_tag(state.armor_pct), f"  armor     {_bar(state.armor_pct)} {_fmt_pct(state.armor_pct)}%")
+    add(_pct_tag(state.structure_pct), f"  structure {_bar(state.structure_pct)} {_fmt_pct(state.structure_pct)}%")
+    add(_pct_tag(state.capacitor_pct), f"  capacitor {_bar(state.capacitor_pct)} {_fmt_pct(state.capacitor_pct)}%")
     add('info', f"  speed     {state.speed:8.1f} m/s")
     mov = _movement_state(state)
     mov_tag = 'good' if mov in ('ORBITING', 'STATIONARY', 'MOVING') else ('warn' if mov == 'ALIGNING' else 'danger')
