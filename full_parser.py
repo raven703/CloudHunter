@@ -849,51 +849,119 @@ def parse_target_entry(target_node: Dict, abs_x: int = 0, abs_y: int = 0) -> Opt
 
 # ==================== ПАРСЕР ВЫБРАННОГО ОБЪЕКТА ====================
 
+# Человекочитаемые подписи кнопок окна выбранного объекта (по _name кнопки)
+_SELECTED_ITEM_ACTIONS = {
+    'selectedItemApproach': 'Approach',
+    'selectedItemWarpTo': 'Warp To',
+    'selectedItemDock': 'Dock',
+    'selectedItemOrbit': 'Orbit',
+    'selectedItemKeepAtRange': 'Keep at Range',
+    'selectedItemLockTarget': 'Lock Target',
+    'selectedItemUnLockTarget': 'Unlock Target',
+    'selectedItemLookAt': 'Look At',
+    'selectedItemSetInterest': 'Set Interest',
+    'selectedItemShowInfo': 'Show Info',
+    'selectedItemAccessDropbox': 'Access Dropbox',
+}
+
+
 def parse_selected_item(root: Dict) -> Optional[Dict]:
-    """Парсинг выбранного объекта"""
+    """Парсинг выбранного объекта (SelectedItemWnd).
+
+    Реальная структура окна (см. uiroot.json):
+      SelectedItemWnd
+        +-- Container 'content'
+              +-- ContainerAutoSize 'headerParent'  (заголовок "Selected Item")
+              +-- Container 'main'
+                    +-- ContainerAutoSize 'bottomCont'
+                    |     +-- Container 'buttonCont'
+                    |           +-- SelectedItemButton 'selectedItem<Действие>' x N
+                    +-- Container 'topCont'
+                          +-- iconCont (иконка объекта)
+                          +-- labelCont -> clipCont -> mainCont -> nameRowCont
+                                +-- EveLabelMedium 'nameLabel'     (имя объекта)
+                                +-- EveLabelMedium 'distanceLabel' (дистанция)
+
+    Вложенность меняется между версиями клиента, поэтому лейблы ищем
+    по _name на любой глубине, а не по фиксированному пути в дереве.
+    Дополнительно собираем все кнопки-действия с их экранными координатами.
+
+    Возвращает dict:
+      {'name': str, 'distance': float, 'is_target': bool, 'icon': str,
+       'x': int, 'y': int, 'w': int, 'h': int,
+       'actions': [{'name', 'action', 'x', 'y', 'w', 'h', 'icon'}, ...]}
+    или None, если объект не выбран (окно пустое).
+    """
     selected_wnd = find_first_by_type(root, 'SelectedItemWnd')
     if not selected_wnd:
         return None
-    
-    result = {
+
+    wei = selected_wnd.get('dictEntriesOfInterest', {}) or {}
+    win_x = get_val(wei.get('_displayX', 0))
+    win_y = get_val(wei.get('_displayY', 0))
+
+    result: Dict[str, Any] = {
         'name': '',
         'distance': 0.0,
         'is_target': False,
-        'icon': ''
+        'icon': '',
+        'x': win_x,
+        'y': win_y,
+        'w': get_val(wei.get('_displayWidth', 0)),
+        'h': get_val(wei.get('_displayHeight', 0)),
+        'actions': [],
     }
-    
-    for child in selected_wnd.get('children', []):
-        if child.get('pythonObjectTypeName') == 'Container':
-            if child.get('dictEntriesOfInterest', {}).get('_name') == 'content':
-                for sub in child.get('children', []):
-                    if sub.get('pythonObjectTypeName') == 'Container':
-                        if sub.get('dictEntriesOfInterest', {}).get('_name') == 'main':
-                            for cont in sub.get('children', []):
-                                if cont.get('pythonObjectTypeName') == 'Container':
-                                    if cont.get('dictEntriesOfInterest', {}).get('_name') == 'topCont':
-                                        for label in cont.get('children', []):
-                                            if label.get('pythonObjectTypeName') == 'EveLabelMedium':
-                                                text = get_node_text(label)
-                                                if 'm' in text:
-                                                    result['distance'] = parse_distance(text)
-                                                elif text:
-                                                    result['name'] = text
-    
-    # Проверяем, является ли цель захваченной
-    for child in selected_wnd.get('children', []):
-        if child.get('pythonObjectTypeName') == 'Container':
-            if child.get('dictEntriesOfInterest', {}).get('_name') == 'content':
-                for sub in child.get('children', []):
-                    if sub.get('pythonObjectTypeName') == 'Container':
-                        if sub.get('dictEntriesOfInterest', {}).get('_name') == 'main':
-                            for cont in sub.get('children', []):
-                                if cont.get('pythonObjectTypeName') == 'ContainerAutoSize':
-                                    for button in cont.get('children', []):
-                                        if button.get('pythonObjectTypeName') == 'SelectedItemButton':
-                                            name = button.get('dictEntriesOfInterest', {}).get('_name', '')
-                                            if 'UnLock' in name:
-                                                result['is_target'] = True
-    
+
+    # 1. Имя и дистанция — лейблы nameLabel/distanceLabel на любой глубине
+    for node in find_children_by_type(selected_wnd, 'EveLabelMedium'):
+        nei = node.get('dictEntriesOfInterest', {}) or {}
+        label_name = str(nei.get('_name', ''))
+        text = clean_html(str(nei.get('_setText', nei.get('_text', ''))))
+        if not text:
+            continue
+        if label_name == 'distanceLabel' or _is_distance_label(text):
+            result['distance'] = parse_distance(text)
+        elif label_name == 'nameLabel' or not result['name']:
+            result['name'] = text
+
+    # 2. Иконка объекта (topCont -> iconCont -> Icon 'iconSprite')
+    icon_node = find_first_by_type(selected_wnd, 'Icon')
+    if icon_node:
+        result['icon'] = str(
+            (icon_node.get('dictEntriesOfInterest', {}) or {}).get('_texturePath', ''))
+
+    # 3. Кнопки-действия: все SelectedItemButton окна,
+    #    координаты — накоплением _displayX/_displayY от окна (абсолютные)
+    def walk_buttons(node: Dict, px: int, py: int) -> None:
+        ei = node.get('dictEntriesOfInterest', {}) or {}
+        ax = px + get_val(ei.get('_displayX', 0))
+        ay = py + get_val(ei.get('_displayY', 0))
+
+        if node.get('pythonObjectTypeName') == 'SelectedItemButton':
+            btn_name = str(ei.get('_name', ''))
+            result['actions'].append({
+                'name': btn_name,
+                'action': _SELECTED_ITEM_ACTIONS.get(
+                    btn_name, btn_name.replace('selectedItem', '')),
+                'x': ax,
+                'y': ay,
+                'w': get_val(ei.get('_displayWidth', 0)),
+                'h': get_val(ei.get('_displayHeight', 0)),
+                'icon': str(ei.get('texturePath', '')),
+            })
+            if 'UnLock' in btn_name:
+                result['is_target'] = True
+
+        for child in node.get('children', []) or []:
+            walk_buttons(child, ax, ay)
+
+    for child in selected_wnd.get('children', []) or []:
+        walk_buttons(child, win_x, win_y)
+
+    # Объект не выбран: в окне нет ни имени, ни кнопок действий
+    if not result['name'] and not result['actions']:
+        return None
+
     return result
 
 

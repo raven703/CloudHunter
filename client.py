@@ -7,11 +7,11 @@ import sys
 from queue import Queue, Empty
 
 from parser import EveParser                            # СТАРЫЙ парсер — результат для бота
-from new_parser import EveParserNew, compare_parsers    # НОВЫЙ парсер — параллельный разбор для сравнения
+from new_parser import EveParserNew                     # НОВЫЙ парсер — параллельный разбор для окна отладки
 
 
 class EveClient:
-    def __init__(self, exe_path, comparison_callback=None, state_callback=None):
+    def __init__(self, exe_path, state_callback=None):
         self.exe_path = exe_path
         # Очередь для бота: сюда кладётся ТОЛЬКО результат СТАРОГО парсера (state, draw_list)
         self.queue = Queue(maxsize=2)
@@ -23,8 +23,6 @@ class EveClient:
         self.parser = EveParser()          # старый рабочий парсер (bot.py не меняется)
         self.parser_new = EveParserNew()   # новый парсер локального чата
 
-        # Callback для передачи результата сравнения в GUI (main.py)
-        self.comparison_callback = comparison_callback
         # Callback для передачи ПОЛНОГО состояния нового парсера в GUI (окно отладки)
         self.state_callback = state_callback
 
@@ -72,7 +70,7 @@ class EveClient:
     def _parse_loop(self):
         """Параллельный разбор каждого JSON:
         1) старый парсер -> очередь для бота (main.py / bot.py работают как раньше)
-        2) новый парсер  -> сравнение результатов -> callback в GUI
+        2) новый парсер  -> callback в GUI (окно отладки нового парсера)
         """
         while self.running:
             try:
@@ -101,15 +99,7 @@ class EveClient:
                 except Exception as e:
                     print(f"[Client] State callback error: {e}")
 
-            # 3. Сравнение результатов двух парсеров
-            comparison = compare_parsers(old_state, new_state)
-            if self.comparison_callback:
-                try:
-                    self.comparison_callback(comparison)
-                except Exception as e:
-                    print(f"[Client] Comparison callback error: {e}")
-
-            # 4. В очередь для бота — ТОЛЬКО результат старого парсера
+            # 3. В очередь для бота — ТОЛЬКО результат старого парсера
             self._put_drop_oldest(self.queue, (old_state, draw_list))
 
     

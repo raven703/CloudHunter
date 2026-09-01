@@ -49,7 +49,10 @@ class ParsedUIState:
     
     # === ВЫБРАННЫЙ ОБЪЕКТ (SelectedItemWnd) ===
     selected_item: Optional[Dict[str, Any]] = field(default_factory=dict)
-    # {"name": str, "distance": str, "is_target": bool, "x": int, "y": int, "w": int, "h": int}
+    # {"name": str, "distance": float, "is_target": bool, "icon": str,
+    #  "x": int, "y": int, "w": int, "h": int,
+    #  "actions": [{"name": str, "action": str, "x": int, "y": int,
+    #               "w": int, "h": int, "icon": str}]}
     
     # === ОВЕРВЬЮ (OverviewWindow) ===
     overview_entries: List[Dict[str, Any]] = field(default_factory=list)

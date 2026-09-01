@@ -7,7 +7,7 @@
   - Работает ПАРАЛЛЕЛЬНО со старым EveParser (parser.py) на тех же JSON-данных.
     (см. client.py: reader_loop -> _parse_loop)
   - Результат старого парсера по-прежнему уходит боту (bot.py не меняется).
-  - Результат ЭТОГО парсера уходит в окно сравнения (main.py -> ComparisonWindow).
+  - Результат ЭТОГО парсера уходит в окно отладки (main.py -> ParserDebugWindow).
 
 Структура локального чата в JSON:
   ChatWindowStack -> XmppChatWindow -> Container(content) -> Container(main)
@@ -413,167 +413,6 @@ class EveParserNew:
                 'priority': 12,
             })
         return draw_list
-# ==================== СРАВНЕНИЕ ДВУХ ПАРСЕРОВ ====================
-
-def _group_players(players: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-    """Группировка пилотов нового парсера по статусам."""
-    groups: Dict[str, List[Dict[str, Any]]] = {s: [] for s in STANDING_COLORS}
-    for p in players or []:
-        standing = p.get('standing') or STANDING_UNKNOWN
-        groups.setdefault(standing, []).append(p)
-    return groups
-
-
-def compare_parsers(old_state: Any, new_state: Any) -> Dict[str, Any]:
-    """Сравнение результатов СТАРОГО (EveParser -> WorldState)
-    и НОВОГО (EveParserNew -> ParsedUIState) парсеров.
-
-    Возвращает dict с флагами, количеством пилотов, списком пилотов нового
-    парсера и текстовыми замечаниями о расхождениях.
-    """
-    comparison: Dict[str, Any] = {
-        'timestamp': time.time(),
-        'old': {
-            'has_neutral': False,
-            'has_hostile': False,
-            'player_count': 0,   # старый парсер не выделяет пилотов списком
-            'players': [],
-            'error': None,
-        },
-        'new': {
-            'has_neutral': False,
-            'has_hostile': False,
-            'player_count': 0,
-            'players': [],
-            'error': None,
-        },
-        'match': True,
-        'notes': [],
-        'groups': {},
-    }
-
-    # ---- СТАРЫЙ парсер ----
-    if old_state is not None:
-        comparison['old']['has_neutral'] = bool(getattr(old_state, 'local_has_neutral', False))
-        comparison['old']['has_hostile'] = bool(getattr(old_state, 'hostiles_in_local', False))
-        old_players = getattr(old_state, 'local_players', None) or []
-        if old_players:
-            comparison['old']['players'] = list(old_players)
-            comparison['old']['player_count'] = len(old_players)
-    else:
-        comparison['old']['error'] = 'нет данных'
-
-    # ---- НОВЫЙ парсер ----
-    if new_state is not None:
-        players = list((getattr(new_state, 'local_players', None) or []))
-        comparison['new']['players'] = players
-        comparison['new']['player_count'] = getattr(new_state, 'local_player_count', len(players))
-        comparison['new']['has_neutral'] = any(
-            p.get('standing') == STANDING_NEUTRAL for p in players)
-        comparison['new']['has_hostile'] = any(
-            p.get('standing') == STANDING_HOSTILE for p in players)
-    else:
-        comparison['new']['error'] = 'ошибка разбора'
-
-    # ---- Группировка пилотов нового парсера по статусам ----
-    comparison['groups'] = _group_players(comparison['new']['players'])
-
-    # ---- Сверка показаний двух парсеров ----
-    old_n = comparison['old']['has_neutral']
-    new_n = comparison['new']['has_neutral']
-    if old_n != new_n:
-        comparison['match'] = False
-        comparison['notes'].append(
-            f"Расхождение NEUTRAL: старый={old_n} новый={new_n}")
-
-    old_h = comparison['old']['has_hostile']
-    new_h = comparison['new']['has_hostile']
-    if old_h != new_h:
-        comparison['match'] = False
-        comparison['notes'].append(
-            f"Расхождение HOSTILE: старый={old_h} новый={new_h}")
-
-    if comparison['new'].get('error'):
-        comparison['match'] = False
-        comparison['notes'].append("Новый парсер не смог разобрать данные.")
-
-    if comparison['old']['player_count'] == 0 and comparison['new']['player_count']:
-        comparison['notes'].append(
-            f"Старый парсер не выделяет пилотов списком (0), новый нашёл: {comparison['new']['player_count']}")
-
-    if comparison['new']['player_count'] == 0 and comparison['old']['has_neutral']:
-        comparison['match'] = False
-        comparison['notes'].append(
-            "Старый парсер видит нейтрала, но новый не нашёл ни одного пилота.")
-
-    return comparison
-# ==================== ФОРМАТИРОВАНИЕ ОТЧЁТОВ ====================
-
-def format_new_state_report(obj: Any) -> str:
-    """Отчёт для окна сравнения / консоли.
-
-    Принимает либо dict от compare_parsers(), либо ParsedUIState.
-    """
-    if isinstance(obj, dict) and 'new' in obj:
-        return _format_comparison_report(obj)
-    if isinstance(obj, ParsedUIState):
-        return _format_state_report(obj)
-    return str(obj)
-
-
-def _format_comparison_report(c: Dict[str, Any]) -> str:
-    """Полный текстовый отчёт о сравнении."""
-    ts = time.strftime('%H:%M:%S', time.localtime(c.get('timestamp', 0)))
-    lines = [f"=== PARSER COMPARISON @ {ts} ==="]
-
-    old = c.get('old', {})
-    new = c.get('new', {})
-
-    lines.append(
-        f"OLD parser: players={old.get('player_count', 0)}  "
-        f"neutral={old.get('has_neutral')}  hostile={old.get('has_hostile')}")
-    if old.get('error'):
-        lines.append(f"  ! {old['error']}")
-
-    lines.append(
-        f"NEW parser: players={new.get('player_count', 0)}  "
-        f"neutral={new.get('has_neutral')}  hostile={new.get('has_hostile')}")
-    if new.get('error'):
-        lines.append(f"  ! {new['error']}")
-
-    lines.append(f"MATCH: {'YES' if c.get('match') else 'NO'}")
-
-    notes = c.get('notes') or []
-    if notes:
-        lines.append("NOTES:")
-        for n in notes:
-            lines.append(f"  - {n}")
-
-    lines.append("")
-    lines.append("NEW PARSER PLAYERS:")
-    players = new.get('players') or []
-    if not players:
-        lines.append("  (нет данных)")
-    for p in players:
-        st = p.get('standing') or STANDING_UNKNOWN
-        suffix = "  (alliance)" if p.get('alliance') else ""
-        lines.append(f"  [{st:<11}] {p.get('name', '')}{suffix}")
-
-    return "\n".join(lines)
-
-
-def _format_state_report(state: ParsedUIState) -> str:
-    """Компактный отчёт о состоянии нового парсера."""
-    players = getattr(state, 'local_players', None) or []
-    lines = ["=== NEW PARSER STATE ==="]
-    lines.append(
-        f"LOCAL CHAT: {state.local_player_count} pilots | "
-        f"neutral={state.local_has_neutral} hostile={state.local_has_hostile}")
-    for p in players:
-        lines.append(f"  [{p.get('standing', '?'):<11}] {p.get('name', '')}")
-    lines.append("")
-    lines.append(f"HP: SHLD {_fmt_pct(state.shield_pct, 1)}% ARM {_fmt_pct(state.armor_pct, 1)}%")
-    return "\n".join(lines)
 # ==================== ОТЧЁТ ДЛЯ ОКНА ОТЛАДКИ ====================
 
 def _pct_tag(pct: float) -> str:
@@ -757,16 +596,25 @@ def build_debug_blocks(state: ParsedUIState) -> List[Tuple[str, str]]:
 
     # ===== 5. ВЫБРАННЫЙ ОБЪЕКТ =====
     header("== SELECTED ITEM ==")
-    sel = state.selected_item
-    if sel and (sel.get('name') or sel.get('distance')):
+    sel = state.selected_item or {}
+    sel_actions = sel.get('actions') or []
+    if sel and (sel.get('name') or sel.get('distance') or sel_actions):
         add('info', f"  name: {sel.get('name') or '-'}")
         add('info', f"  distance: {_fmt_dist(sel.get('distance'))}")
-        if sel.get('is_target'):
-            add('danger', "  is_target: YES")
+        add('danger' if sel.get('is_target') else 'dim',
+            f"  is_target: {'YES' if sel.get('is_target') else 'no'}")
+        dim(f"  icon: {_short_icon(sel.get('icon'))}")
+        dim(f"  window @ ({sel.get('x', 0)},{sel.get('y', 0)}) "
+            f"{sel.get('w', 0)}x{sel.get('h', 0)}")
+        # Действия, которые можно применить к выбранному объекту (кнопки окна)
+        if sel_actions:
+            add('header', "  -- ACTIONS --")
+            for a in sel_actions:
+                label = str(a.get('action') or a.get('name') or '?')
+                add('good', f"     [{label:<16}] @ ({a.get('x', 0):>4},{a.get('y', 0):>4})"
+                            f"  {_short_icon(a.get('icon'))}")
         else:
-            add('dim', "  is_target: no")
-        icon = _short_icon(sel.get('icon'))
-        dim(f"  icon: {icon}")
+            dim("  (no actions)")
     else:
         dim("  (no selected item)")
 
