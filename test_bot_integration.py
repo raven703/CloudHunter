@@ -247,6 +247,8 @@ state.menu_items = [
      'has_submenu': True, 'name': '', 'icon': None},
 ]
 reset_mock()
+# Меню «уже стабилизировалось» — сдвигаем таймер стабилизации в прошлое
+bot._mission_ts = time.time() - bot.cfg['menu_settle'] - 0.3
 bot.think(state, use_drones=True)
 print(f"8) menu: warp item   -> mission={bot._mission}")
 assert bot._mission == 'SUBMENU_WAIT'
@@ -262,12 +264,15 @@ state.menu_items = [
      'has_submenu': False, 'name': '', 'icon': None},
 ]
 reset_mock()
+# Подменю «уже появилось и стабилизировалось» — кликаем сразу, в центр строки
+bot._submenu_seen_ts = time.time() - bot.cfg['submenu_settle'] - 0.3
 bot.think(state, use_drones=True)
 moves = [c.args for c in pag.moveTo.call_args_list if c.args]
 print(f"9) submenu distance  -> mission={bot._mission}, moves={moves}")
-assert bot._mission == 'WARP_CLICKED'
+assert bot._mission == 'WARP_CLICKED', f"expected WARP_CLICKED, got {bot._mission}"
+# центр 'within 20 km' = (640+50, 388+8) = (690, 396) + рандом _click_at
 assert any(645 <= m[0] <= 760 and 390 <= m[1] <= 400 for m in moves), \
-    f"must click 'within 20 km' at ~(650..760, 396), got {moves}"
+    f"must click 'within 20 km' at ~(690, 396), got {moves}"
 
 # ============ 10. Варп подтверждён по HUD -> визит зафиксирован ============
 state.is_warp = True
@@ -345,5 +350,31 @@ state.menu_items = [
 picked = bot._pick_warp_menu_item(state)
 print(f"11c) direct 20 km    -> {picked.get('text') if picked else None}")
 assert picked is not None and picked.get('text') == 'Warp to Within 20 km'
+
+# ============ 12. Живой дамп raw_dump_20260902_153738.json ============
+# Меню в дампе уже открыто, подменю дистанций раскрыто. Проверяем, что бот
+# выбирает 'Warp to Within' и клик (центр строки) попадает внутрь пунктов.
+with open("raw_dump_20260902_153738.json", "r", encoding="utf-8") as f:
+    live = json.load(f)
+live_state, _ = EveParserNew().parse(live)
+picked = bot._pick_warp_menu_item(live_state)
+ttext = picked.get('text') if picked else None
+print(f"12) live pick        -> {ttext} @ ({picked.get('x') if picked else '-'},"
+      f"{picked.get('y') if picked else '-'})")
+assert picked is not None and picked.get('text') == 'Warp to Within', ttext
+assert (picked.get('x'), picked.get('y')) == (664, 119), picked
+cx = picked.get('x') + picked.get('w') // 2   # центр строки 'Warp to Within'
+cy = picked.get('y') + picked.get('h') // 2
+assert 664 <= cx <= 827 and 119 <= cy <= 141, (cx, cy)
+print(f"12b) center click    -> 'Warp to Within' в центре строки ({cx},{cy})")
+
+dist_items = [it for it in live_state.menu_items
+              if 'within 70 km' in str(it.get('text') or '').lower()]
+assert dist_items, "дамл должен содержать 'Within 70 km'"
+di = dist_items[0]
+dx = di.get('x') + di.get('w') // 2           # центр строки 'Within 70 km'
+dy = di.get('y') + di.get('h') // 2
+assert 837 <= dx <= 941 and 229 <= dy <= 251, (dx, dy)
+print(f"12c) 'Within 70 km'  -> центр клика ({dx},{dy}) попадает в строку")
 
 print("\nALL BOT INTEGRATION ASSERTIONS PASSED")

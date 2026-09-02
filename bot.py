@@ -40,7 +40,9 @@ class EveBot:
             'menu_open_timeout': 5.0,           # ждать открытия контекстного меню, сек
             'warp_confirm_timeout': 15.0,       # ждать подтверждения варпа, сек
             'warp_max_attempts': 3,             # попыток варпа на одну аномалию
-            'warp_distance_km': 20,             # выбор "within X km" в подменю
+            'warp_distance_km': 70,             # выбор 'within X km' в подменю (потом — config.json)
+            'menu_settle': 0.8,                 # пауза после открытия меню до клика по пункту, сек
+            'submenu_settle': 1.0,              # пауза после появления подменю до клика по дистанции, сек
             'arrival_settle_time': 15.0,        # пауза после варпа (овервью прогружается), сек
         }
 
@@ -66,6 +68,7 @@ class EveBot:
         self._current_anom = None
         self._visited_anoms = {}         # имя аномалии -> ts последнего визита
         self._arrival_ts = 0.0           # ts последнего прибытия варпом (settle-пауза)
+        self._submenu_seen_ts = None     # ts, когда пункт дистанции впервые появился в подменю
 
         # --- Расширенное логирование (чекбокс VERBOSE LOG в GUI) ---
         self.verbose = False
@@ -622,17 +625,35 @@ class EveBot:
         want = self.cfg['warp_distance_km']
         entries = [it for it in (state.menu_items or []) if it.get('type') == 'entry']
 
-        for it in entries:                      # 1) подменю дистанций
+        # 1) ТОЧНО 'Warp to Within' БЕЗ прямой дистанции в названии
+        #    ('Warp to Within 0 m' / 'Warp to Within 20 km' — прямой варп, его НЕ берём).
+        #    В свежем дампе: 'Warp to Within' (подменю дистанций) vs 'Warp to Within 0 m'.
+        for it in entries:
+            txt = str(it.get('text') or '').strip().lower()
+            if txt.startswith('warp to within'):
+                rest = txt[len('warp to within'):].strip()
+                if not rest or re.search(r'\d', rest):
+                    continue   # прямое '0 m' / '(0 m)' / '20 km' — пропускаем
+                return it      # сразу 'warp to within' (точное совпадение)
+        # 1a) пункт 'Warp to Within' с подменю (если имя чуть другое)
+        for it in entries:
+            txt = str(it.get('text') or '').lower()
+            if 'warp to within' in txt and not re.search(r'\d', txt) and it.get('has_submenu'):
+                return it
+        # 2) подменю дистанций: любой warp-пункт с подменю
+        for it in entries:
             txt = str(it.get('text') or '').lower()
             if 'warp' in txt and it.get('has_submenu'):
                 return it
-        for it in entries:                      # 2) прямая нужная дистанция
+        # 3) прямая нужная дистанция
+        for it in entries:
             txt = str(it.get('text') or '').lower()
             if 'warp' in txt and f'within {want} km' in txt:
                 return it
-        for it in entries:                      # 3) любой warp, кроме 0 м
+        # 4) любой warp, кроме варпа на 0 м
+        for it in entries:
             txt = str(it.get('text') or '').lower()
-            if 'warp' in txt and '0 m' not in txt:
+            if 'warp' in txt and '0 m' not in txt and '(' not in txt:
                 return it
         return None
 
@@ -649,6 +670,7 @@ class EveBot:
         self._mission_ts = 0.0
         self._warp_attempts = 0
         self._current_anom = None
+        self._submenu_seen_ts = None
 
     def _find_new_anomaly(self, state):
         """Миссия: берём аномалию из списка окна Probe Scanner и летим на неё.
@@ -726,22 +748,30 @@ class EveBot:
 
         elif self._mission == 'MENU_WAIT':
             if state.menu_open and state.menu_items:
-                item = self._pick_warp_menu_item(state)
-                if item:
-                    print(f"[Mission] Пункт меню '{item.get('text')}' — клик")
-                    self._click_at((item.get('x') or 0) + off_x + 10,
-                                   (item.get('y') or 0) + (item.get('h') or 16) // 2)
-                    if item.get('has_submenu'):
-                        self._mission = 'SUBMENU_WAIT'
-                        self._mission_ts = now
-                    else:
-                        self._mission = 'WARP_CLICKED'
-                        self._mission_ts = now
+                # Стабилизация: меню «доезжает» до конечной позиции — если кликнуть
+                # по координатам из дампа до этого, бот попадает мимо пунктов.
+                if now - self._mission_ts < self.cfg.get('menu_settle', 0.8):
+                    self._vlog_throttled('m_menwait',
+                        f"mission: меню стабилизируется ещё "
+                        f"{self.cfg.get('menu_settle', 0.8) - (now - self._mission_ts):.1f} с")
                 else:
-                    print("[Mission] Пункт Warp в меню не найден — закрываю меню")
-                    pyautogui.press('esc')
-                    self._mission = 'IDLE'
-                    self._mission_ts = now
+                    item = self._pick_warp_menu_item(state)
+                    if item:
+                        print(f"[Mission] Пункт меню '{item.get('text')}' — клик")
+                        # Клик в ЦЕНТР строки (не в край) — надёжно попадает по тексту
+                        self._click_at((item.get('x') or 0) + (item.get('w') or 160) // 2 + off_x,
+                                       (item.get('y') or 0) + (item.get('h') or 22) // 2 + off_y)
+                        if item.get('has_submenu'):
+                            self._mission = 'SUBMENU_WAIT'
+                        else:
+                            self._mission = 'WARP_CLICKED'
+                        self._mission_ts = now
+                        self._submenu_seen_ts = None
+                    else:
+                        print("[Mission] Пункт Warp в меню не найден — закрываю меню")
+                        pyautogui.press('esc')
+                        self._mission = 'IDLE'
+                        self._mission_ts = now
             elif now - self._mission_ts >= self.cfg['menu_open_timeout']:
                 print("[Mission] Контекстное меню не открылось — повтор")
                 self._mission = 'IDLE'
@@ -750,34 +780,47 @@ class EveBot:
                                                   f"({now - self._mission_ts:.1f} с)")
 
         elif self._mission == 'SUBMENU_WAIT':
-            # Подменю дистанций: предпочитаем 'within X km' из конфига
+            # Подменю дистанций: ищем 'within 70 km' из конфига (или первую НЕ 0м 'within X km')
             want = self.cfg['warp_distance_km']
             target_item = None
+            fallback_item = None
             for it in state.menu_items or []:
                 if it.get('type') != 'entry':
                     continue
                 txt = str(it.get('text') or '').lower()
-                if 'within' not in txt and 'km' not in txt and ' m' not in txt:
+                if 'within' not in txt:
                     continue
                 if f"within {want} km" in txt:
                     target_item = it
                     break
-                if target_item is None:
-                    target_item = it   # первый доступный вариант — запасной
-            if target_item:
-                print(f"[Mission] Дистанция варпа: '{target_item.get('text')}' — клик")
-                self._click_at((target_item.get('x') or 0) + off_x + 10,
-                               (target_item.get('y') or 0) + (target_item.get('h') or 16) // 2)
-                self._mission = 'WARP_CLICKED'
-                self._mission_ts = now
-            elif now - self._mission_ts >= self.cfg['menu_open_timeout']:
-                # Подменю не поймали (варп мог пойти сразу) — ждём подтверждения
-                print("[Mission] Подменю дистанции не найдено — жду подтверждения варпа")
-                self._mission = 'WARP_CLICKED'
-                self._mission_ts = now
+                if 'km' in txt and '0 m' not in txt and fallback_item is None:
+                    fallback_item = it   # запасной вариант дистанции (НЕ 0 м)
+            item = target_item or fallback_item
+            if item:
+                # Стабилизация подменю: оно «выезжает» рядом с пунктом меню, и в
+                # первые кадры координаты пунктов ещё не совпадают с экраном.
+                if self._submenu_seen_ts is None:
+                    self._submenu_seen_ts = now
+                    self._vlog_throttled('m_seen',
+                        f"mission: подменю дистанций появилось — жду стабилизации "
+                        f"{self.cfg.get('submenu_settle', 1.0)} с")
+                if now - self._submenu_seen_ts >= self.cfg.get('submenu_settle', 1.0):
+                    print(f"[Mission] Дистанция варпа: '{item.get('text')}' — клик")
+                    self._click_at((item.get('x') or 0) + (item.get('w') or 104) // 2 + off_x,
+                                   (item.get('y') or 0) + (item.get('h') or 22) // 2 + off_y)
+                    self._mission = 'WARP_CLICKED'
+                    self._mission_ts = now
             else:
-                self._vlog_throttled('m_subwait', f"mission: жду подменю дистанций "
-                                                  f"({now - self._mission_ts:.1f} с)")
+                # Пункт дистанции пропал из состояния — подменю могло закрыться/съехать
+                self._submenu_seen_ts = None
+                if now - self._mission_ts >= self.cfg['menu_open_timeout']:
+                    # Подменю так и не поймали (варп мог пойти сразу) — ждём подтверждения
+                    print("[Mission] Подменю дистанции не найдено — жду подтверждения варпа")
+                    self._mission = 'WARP_CLICKED'
+                    self._mission_ts = now
+                else:
+                    self._vlog_throttled('m_subwait', f"mission: жду подменю дистанций "
+                                                      f"({now - self._mission_ts:.1f} с)")
 
     def emergency_exit(self, reason):
         self.stats['escapes'] += 1

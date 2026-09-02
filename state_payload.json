@@ -1,8 +1,8 @@
 {
   "meta": {
     "schema_version": 1,
-    "timestamp": 1788362317.909,
-    "datetime": "2026-09-02 18:18:37",
+    "timestamp": 1788363878.123,
+    "datetime": "2026-09-02 18:44:38",
     "window": {
       "width": 1497,
       "height": 1001
@@ -28,11 +28,11 @@
     },
     "speed_mps": 0.0,
     "movement": {
-      "is_warp": false,
+      "is_warp": true,
       "is_establishing": false,
       "is_orbiting": false,
       "is_docked": false,
-      "state": "STATIONARY"
+      "state": "WARP"
     },
     "is_pvp": false
   },
@@ -101,7 +101,7 @@
       "id": "QGP-560",
       "name": "Sansha Hidden Hub",
       "group": "Combat Site",
-      "distance": 2287351443003.0,
+      "distance": 2284359485589.0,
       "signal": 0.0,
       "type": "combat",
       "x": 507,
@@ -123,193 +123,18 @@
       "id": "OKW-372",
       "name": "Sansha Hidden Hub",
       "group": "Combat Site",
-      "distance": 1690455938910.0,
+      "distance": 1688959960202.9998,
       "signal": 0.0,
       "type": "combat",
       "x": 507,
       "y": 122,
       "h": 20
-    },
-    {
-      "id": "IED-384",
-      "name": "",
-      "group": "Cosmic Signature",
-      "distance": 2036027020227.0,
-      "signal": 0.0,
-      "type": "signature",
-      "x": 507,
-      "y": 142,
-      "h": 20
     }
   ],
   "context_menu": {
-    "open": true,
-    "type": "ContextSubMenu",
-    "items": [
-      {
-        "type": "entry",
-        "name": "context_menu_Within 0 m",
-        "text": "Within 0 m",
-        "x": 885,
-        "y": 122,
-        "w": 104,
-        "h": 22,
-        "has_submenu": false,
-        "icon": null
-      },
-      {
-        "type": "entry",
-        "name": "context_menu_Within 10 km",
-        "text": "Within 10 km",
-        "x": 885,
-        "y": 144,
-        "w": 104,
-        "h": 22,
-        "has_submenu": false,
-        "icon": null
-      },
-      {
-        "type": "entry",
-        "name": "context_menu_Within 20 km",
-        "text": "Within 20 km",
-        "x": 885,
-        "y": 166,
-        "w": 104,
-        "h": 22,
-        "has_submenu": false,
-        "icon": null
-      },
-      {
-        "type": "entry",
-        "name": "context_menu_Within 30 km",
-        "text": "Within 30 km",
-        "x": 885,
-        "y": 188,
-        "w": 104,
-        "h": 22,
-        "has_submenu": false,
-        "icon": null
-      },
-      {
-        "type": "entry",
-        "name": "context_menu_Within 50 km",
-        "text": "Within 50 km",
-        "x": 885,
-        "y": 210,
-        "w": 104,
-        "h": 22,
-        "has_submenu": false,
-        "icon": null
-      },
-      {
-        "type": "entry",
-        "name": "context_menu_Within 70 km",
-        "text": "Within 70 km",
-        "x": 885,
-        "y": 232,
-        "w": 104,
-        "h": 22,
-        "has_submenu": false,
-        "icon": null
-      },
-      {
-        "type": "entry",
-        "name": "context_menu_Within 100 km",
-        "text": "Within 100 km",
-        "x": 885,
-        "y": 254,
-        "w": 104,
-        "h": 22,
-        "has_submenu": false,
-        "icon": null
-      },
-      {
-        "type": "separator"
-      },
-      {
-        "type": "entry",
-        "name": "context_menu_Set Default",
-        "text": "Set Default",
-        "x": 885,
-        "y": 289,
-        "w": 104,
-        "h": 22,
-        "has_submenu": true,
-        "icon": "res:/UI/Texture/Icons/1_16_14.png"
-      },
-      {
-        "type": "entry",
-        "name": "context_menu_Warp to Within 0 m",
-        "text": "Warp to Within 0 m",
-        "x": 712,
-        "y": 100,
-        "w": 163,
-        "h": 22,
-        "has_submenu": false,
-        "icon": ""
-      },
-      {
-        "type": "entry",
-        "name": "context_menu_Warp to Within",
-        "text": "Warp to Within",
-        "x": 712,
-        "y": 122,
-        "w": 163,
-        "h": 22,
-        "has_submenu": true,
-        "icon": ""
-      },
-      {
-        "type": "entry",
-        "name": "context_menu_Align to",
-        "text": "Align to",
-        "x": 712,
-        "y": 144,
-        "w": 163,
-        "h": 22,
-        "has_submenu": false,
-        "icon": ""
-      },
-      {
-        "type": "separator"
-      },
-      {
-        "type": "entry",
-        "name": "context_menu_Save Location...",
-        "text": "Save Location...",
-        "x": 712,
-        "y": 179,
-        "w": 163,
-        "h": 22,
-        "has_submenu": false,
-        "icon": null
-      },
-      {
-        "type": "separator"
-      },
-      {
-        "type": "entry",
-        "name": "context_menu_Ignore Result",
-        "text": "Ignore Result",
-        "x": 712,
-        "y": 214,
-        "w": 163,
-        "h": 22,
-        "has_submenu": false,
-        "icon": null
-      },
-      {
-        "type": "entry",
-        "name": "context_menu_Ignore Other Results",
-        "text": "Ignore Other Results",
-        "x": 712,
-        "y": 236,
-        "w": 163,
-        "h": 22,
-        "has_submenu": false,
-        "icon": null
-      }
-    ]
+    "open": false,
+    "type": "",
+    "items": []
   },
   "asteroid_belts": [],
   "neocom": {
@@ -370,7 +195,7 @@
         "notification_count": 0
       }
     ],
-    "clock": "15:18"
+    "clock": "15:44"
   },
   "executor": {
     "combat_mode": "IDLE",
@@ -387,7 +212,7 @@
     "hp_structure": 1.0,
     "hp_capacitor": 1.0,
     "speed_mps": 0.0,
-    "is_warp": 0,
+    "is_warp": 1,
     "is_establishing": 0,
     "is_orbiting": 0,
     "is_docked": 0,
@@ -407,7 +232,7 @@
     "local_players": 0,
     "local_has_neutral": 0,
     "local_has_hostile": 0,
-    "menu_open": 1,
+    "menu_open": 0,
     "threat_level": 0
   },
   "debug_overlay": []
