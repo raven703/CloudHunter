@@ -4,27 +4,37 @@ import os
 import subprocess
 import threading
 import sys
+import time
 from queue import Queue, Empty
 
-from parser import EveParser                            # СТАРЫЙ парсер — результат для бота
-from new_parser import EveParserNew                     # НОВЫЙ парсер — параллельный разбор для окна отладки
+from new_parser import EveParserNew         # ЕДИНСТВЕННЫЙ парсер UI
+from state_json import (build_state_payload, save_state_payload)   # JSON-выгрузка для бота и нейросети
 
 
 class EveClient:
     def __init__(self, exe_path, state_callback=None):
         self.exe_path = exe_path
-        # Очередь для бота: сюда кладётся ТОЛЬКО результат СТАРОГО парсера (state, draw_list)
+        # Очередь для бота: сюда кладётся (state, draw_list, payload) нового парсера
         self.queue = Queue(maxsize=2)
         # Внутренняя очередь сырых JSON между читающим потоком и потоком парсинга
         self._raw_queue = Queue(maxsize=3)
         self.running = True
 
-        # Оба парсера работают на одних и тех же JSON-данных:
-        self.parser = EveParser()          # старый рабочий парсер (bot.py не меняется)
-        self.parser_new = EveParserNew()   # новый парсер локального чата
+        # Единственный парсер системы (см. new_parser.py)
+        self.parser = EveParserNew()
 
-        # Callback для передачи ПОЛНОГО состояния нового парсера в GUI (окно отладки)
+        # Callback для передачи ПОЛНОГО состояния парсера в GUI (окно отладки)
         self.state_callback = state_callback
+
+        # Флаг: JSON-выгрузка state_payload.json ещё ни разу не записывалась
+        self._payload_saved_once = False
+        # Последний собранный JSON payload (для внешних потребителей)
+        self.last_payload = None
+        # Последний СЫРОЙ JSON-дамп UI (для кнопки "Выгрузить сырой JSON")
+        self.last_raw_json = None
+        # Расширенное логирование (чекбокс VERBOSE LOG в GUI)
+        self.verbose = False
+        self._last_vlog_ts = 0.0
 
     def _log_reader(self, pipe):
         for line in pipe:
@@ -49,7 +59,7 @@ class EveClient:
 
         threading.Thread(target=self._log_reader, args=(process.stderr,), daemon=True).start()
 
-        # Отдельный поток: парсит каждый JSON ОБОИМИ парсерами
+        # Отдельный поток: парсит каждый JSON парсером EveParserNew
         threading.Thread(target=self._parse_loop, daemon=True).start()
 
         while self.running:
@@ -68,9 +78,11 @@ class EveClient:
                 print(f"[Client] JSON Error: {e}")
 
     def _parse_loop(self):
-        """Параллельный разбор каждого JSON:
-        1) старый парсер -> очередь для бота (main.py / bot.py работают как раньше)
-        2) новый парсер  -> callback в GUI (окно отладки нового парсера)
+        """Разбор каждого JSON единым парсером (EveParserNew):
+        1) state (ParsedUIState) + draw_list -> очередь для бота и GUI;
+        2) state -> callback в GUI (окно отладки парсера);
+        3) build payload -> JSON-файл state_payload.json для исполнительного
+           бота и нейросети (см. state_json.py).
         """
         while self.running:
             try:
@@ -78,29 +90,62 @@ class EveClient:
             except Empty:
                 continue
 
-            # 1. СТАРЫЙ парсер — его результат уходит боту
+            # Запоминаем сырой дамп — его отдаёт кнопка "Выгрузить сырой JSON"
+            self.last_raw_json = data
+
+            # 1. Парсинг UI
             try:
-                old_state, draw_list = self.parser.parse(data)
+                state, draw_list = self.parser.parse(data)
             except Exception as e:
-                print(f"[Client] OLD parser error: {e}")
+                print(f"[Client] parser error: {e}")
                 continue
 
-            # 2. НОВЫЙ парсер — те же самые данные, параллельно
-            new_state = None
-            try:
-                new_state, _new_draw_list = self.parser_new.parse(data)
-            except Exception as e:
-                print(f"[Client] NEW parser error: {e}")
+            # Расширенный лог: сводка разбора (не чаще раза в 2 сек)
+            if self.verbose:
+                now_t = time.time()
+                if now_t - self._last_vlog_ts >= 2.0:
+                    self._last_vlog_ts = now_t
+                    print(f"[V][Client] parsed: scan={len(state.scan_results or [])} "
+                          f"npc={len(state.npc_all or [])} targets={len(state.targets or [])} "
+                          f"menu={state.menu_open} local={state.local_player_count} "
+                          f"loading={state.is_loading} docked={state.is_docked}")
 
-            # 2b. Полное состояние нового парсера — в GUI для окна отладки
-            if new_state is not None and self.state_callback:
+            # 2. JSON-выгрузка для исполнительного бота и нейросети
+            payload = None
+            try:
+                payload = build_state_payload(state, draw_list)
+                self.last_payload = payload
+                saved = save_state_payload(state, draw_list)
+                if saved and not self._payload_saved_once:
+                    self._payload_saved_once = True
+                    print(f"[Client] JSON payload for bot/NN -> {saved}")
+            except Exception as e:
+                print(f"[Client] payload error: {e}")
+
+            # 3. Полное состояние — в GUI для окна отладки
+            if self.state_callback:
                 try:
-                    self.state_callback(new_state)
+                    self.state_callback(state)
                 except Exception as e:
                     print(f"[Client] State callback error: {e}")
 
-            # 3. В очередь для бота — ТОЛЬКО результат старого парсера
-            self._put_drop_oldest(self.queue, (old_state, draw_list))
+            # 4. В очередь для бота — (state, draw_list, payload)
+            self._put_drop_oldest(self.queue, (state, draw_list, payload))
+
+    def dump_raw_json(self, out_dir: str = '.') -> str:
+        """Выгрузка последнего сырого JSON-дампа UI в файл (для отладки парсера).
+
+        Вызывается кнопкой "ВЫГРУЗИТЬ СЫРОЙ JSON" в GUI (main.py).
+        :return: путь созданного файла
+        :raises RuntimeError: если от eveui.exe ещё не приходило ни одного дампа
+        """
+        if self.last_raw_json is None:
+            raise RuntimeError("Сырой JSON ещё не получен от eveui.exe")
+        fn = os.path.join(out_dir, f"raw_dump_{time.strftime('%Y%m%d_%H%M%S')}.json")
+        with open(fn, "w", encoding="utf-8") as f:
+            json.dump(self.last_raw_json, f, ensure_ascii=False, indent=2)
+        return fn
+
 
     
     def stop(self):

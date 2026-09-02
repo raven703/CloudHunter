@@ -124,7 +124,14 @@ def get_node_text(node: Dict) -> str:
 # ==================== ПАРСЕР КОНТЕКСТНОГО МЕНЮ ====================
 
 def parse_context_menu(root: Dict) -> Dict[str, Any]:
-    """Парсинг контекстного меню"""
+    """Парсинг контекстного меню.
+
+    l_menu может содержать одновременно ContextMenu (основное меню) и
+    ContextSubMenu (раскрытое подменю, например дистанции варпа).
+    Собираем пункты из ВСЕХ окон меню в один список — бот ищет нужный
+    пункт по тексту ('Warp to Location', 'within 20 km', ...) по всему списку.
+    Координаты пунктов — АБСОЛЮТНЫЕ (накоплением от окна меню).
+    """
     result = {
         'open': False,
         'menu_type': '',
@@ -142,19 +149,24 @@ def parse_context_menu(root: Dict) -> Dict[str, Any]:
     if not l_menu:
         return result
     
-    # Ищем ContextMenu или ContextSubMenu
+    # Собираем ContextMenu и ContextSubMenu (может быть несколько окон)
     for child in l_menu.get('children', []):
         obj_type = child.get('pythonObjectTypeName', '')
         if obj_type in ['ContextMenu', 'ContextSubMenu']:
             result['open'] = True
-            result['menu_type'] = obj_type
-            result['items'] = parse_menu_items(child)
+            if not result['menu_type']:
+                result['menu_type'] = obj_type
+            wc = get_node_coords(child)
+            items = parse_menu_items(child, wc['x'], wc['y'])
+            result['items'].extend(items)
+            if obj_type == 'ContextSubMenu':
+                result['submenus'].append(items)
     
     return result
 
 
-def parse_menu_items(menu_node: Dict) -> List[Dict]:
-    """Парсинг пунктов меню"""
+def parse_menu_items(menu_node: Dict, px: int = 0, py: int = 0) -> List[Dict]:
+    """Парсинг пунктов меню (px, py — координаты окна меню для абсолютизации)"""
     items = []
     
     # Ищем mainCont
@@ -168,19 +180,24 @@ def parse_menu_items(menu_node: Dict) -> List[Dict]:
     if not main_cont:
         return items
     
+    # Накопляем смещение mainCont внутри окна меню
+    cei = main_cont.get('dictEntriesOfInterest', {}) or {}
+    mx = px + get_val(cei.get('_displayX', 0))
+    my = py + get_val(cei.get('_displayY', 0))
+    
     for child in main_cont.get('children', []):
         if child.get('pythonObjectTypeName') == 'MenuEntryView':
-            items.append(parse_menu_entry(child))
+            items.append(parse_menu_entry(child, mx, my))
         elif child.get('pythonObjectTypeName') == 'Line':
             items.append({'type': 'separator'})
     
     return items
 
 
-def parse_menu_entry(entry_node: Dict) -> Dict:
-    """Парсинг одного пункта меню"""
+def parse_menu_entry(entry_node: Dict, px: int = 0, py: int = 0) -> Dict:
+    """Парсинг одного пункта меню (px, py — координаты родителя)"""
     ei = entry_node.get('dictEntriesOfInterest', {})
-    coords = get_node_coords(entry_node)
+    coords = get_node_coords(entry_node, px, py)
     
     result = {
         'type': 'entry',
@@ -1000,6 +1017,29 @@ def parse_overview(root: Dict) -> List[Dict]:
     return result
 
 
+def npc_class_from_values(values) -> Optional[str]:
+    """Класс NPC по строкам 'npc*' в значениях узла ('npcfrigate' -> 'FRIGATE').
+
+    Используется и в овервью (parse_overview_entry -> npc_class), и в
+    классификации NPC иконок (new_parser.parse_npc_lists).
+    """
+    for val in values:
+        v_str = str(val).lower()
+        if 'npc' not in v_str:
+            continue
+        if 'npcfrigate' in v_str:
+            return "FRIGATE"
+        if 'npcbattleship' in v_str:
+            return "BATTLESHIP"
+        if 'npcbattlecruiser' in v_str:
+            return "BATTLECRUISER"
+        if 'npccruiser' in v_str:
+            return "CRUISER"
+        # Просто 'npc' без уточнения класса
+        return "NPC"
+    return None
+
+
 def parse_overview_entry(entry_node: Dict) -> Optional[Dict]:
     """Парсинг одной записи овервью"""
     result = {
@@ -1043,6 +1083,21 @@ def parse_overview_entry(entry_node: Dict) -> Optional[Dict]:
                         result['type'] = 'planet'
                     elif 'citadel' in str(texture):
                         result['type'] = 'citadel'
+
+    # Класс NPC ('npcfrigate' -> 'FRIGATE' и т.д.) — для приоритезации целей
+    # ботом (фрегаты-скрамеры умирают первыми). Сканируем поддерево записи.
+    npc_values = []
+    def _collect_values(n, depth=0):
+        if not isinstance(n, dict) or depth > 4:
+            return
+        nei = n.get('dictEntriesOfInterest', {}) or {}
+        npc_values.extend(nei.values())
+        for ch in n.get('children', []) or []:
+            _collect_values(ch, depth + 1)
+    _collect_values(entry_node)
+    npc_class = npc_class_from_values(npc_values)
+    if npc_class:
+        result['npc_class'] = npc_class
     
     return result if result['name'] else None
 
@@ -1319,24 +1374,34 @@ def parse_scan_results(root: Dict) -> List[Dict]:
     Container('maincontainer') -> Container('__clipper') ->
     Container('__content') -> ScanResultNew*; при пересканировании строки
     могут временно оказаться в SwipeAnimator('scanAnimator').
+
+    Координаты строки (x, y, h) — АБСОЛЮТНЫЕ (накоплением от окна сканера):
+    бот кликает по ним, чтобы открыть контекстное меню аномалии.
     """
     result: List[Dict] = []
     scanner_wnd = find_first_by_type(root, 'ProbeScannerWindow')
     if not scanner_wnd:
         return result
 
-    def collect(node):
+    def collect(node, px, py):
         if not isinstance(node, dict):
             return
+        ei = node.get('dictEntriesOfInterest', {}) or {}
+        ax = px + get_val(ei.get('_displayX', 0))
+        ay = py + get_val(ei.get('_displayY', 0))
+
         if node.get('pythonObjectTypeName') == 'ScanResultNew':
             parsed = parse_scan_result(node)
             if parsed:
+                parsed['x'] = ax
+                parsed['y'] = ay
+                parsed['h'] = get_val(ei.get('_displayHeight', 0))
                 result.append(parsed)
             return  # вложенных ScanResultNew не бывает
         for child in node.get('children', []) or []:
-            collect(child)
+            collect(child, ax, ay)
 
-    collect(scanner_wnd)
+    collect(scanner_wnd, 0, 0)
     return result
 
 
@@ -1654,14 +1719,15 @@ def parse_ui_root(json_data: Dict) -> ParsedUIState:
     state.neocom_buttons = neocom_data['buttons']
     state.clock_time = neocom_data['clock']
     
-    # ====== ДОПОЛНИТЕЛЬНО ======
-    # Проверяем, открыт ли экран загрузки
-    loading_fill = find_first_by_type(root, 'Fill')
-    if loading_fill:
-        ei = loading_fill.get('dictEntriesOfInterest', {})
-        color = ei.get('_color', {})
-        if color.get('aPercent', 0) == 0 and color.get('rPercent', 0) == 0:
-            state.is_loading = True
+    # ====== ЭКРАН ЗАГРУЗКИ ======
+    # Надёжный признак: в дереве нет ни космического UI (ShipUI), ни ангарных
+    # элементов (UndockButton/HangarLayer). Прежняя эвристика по цвету первого
+    # попавшегося 'Fill' срабатывала на невидимые Fill обычного UI и ВСЕГДА
+    # давала is_loading=True — из-за этого миссия бота не стартовала.
+    in_space_ui = find_first_by_type(root, 'ShipUI') is not None
+    docked_ui = (find_first_by_type(root, 'UndockButton') is not None
+                 or find_first_by_type(root, 'HangarLayer') is not None)
+    state.is_loading = not (in_space_ui or docked_ui)
     
     # ====== СТАТУС КОРАБЛЯ (warp / aligning / orbit / docked) ======
     # Реальная структура индикации:

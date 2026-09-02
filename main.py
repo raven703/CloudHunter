@@ -55,7 +55,7 @@ class ParserDebugWindow(tk.Toplevel):
 
     def __init__(self, parent):
         super().__init__(parent)
-        self.title("NEW PARSER DEBUG")
+        self.title("PARSER DEBUG")
         self.geometry("860x820+380+20")
         self.configure(bg='#0a0a0a')
 
@@ -161,7 +161,7 @@ class EveApp:
         self.root = tk.Tk()
         self.root.title("EVE Pilot Panel")
         
-        win_w, win_h = 400, 850
+        win_w, win_h = 400, 950
         screen_w = self.root.winfo_screenwidth()
         self.root.geometry(f"{win_w}x{win_h}+{screen_w - win_w}+{10}")
         self.root.configure(bg='#1a1a1a')
@@ -173,11 +173,17 @@ class EveApp:
         self.stderr_redirector = WidgetLogger(self.log_safe)
         sys.stderr = self.stderr_redirector
 
+        # Статистика сессии: бот (bot.py) обновляет, GUI показывает
+        self.stats = {
+            'sites_cleared': 0, 'kills': 0, 'drones_lost': 0, 'escapes': 0,
+        }
+        self.last_state = None
+
         self.client = EveClient(exe_path, state_callback=self.on_new_state)
-        # Парсинг выполняется в client.py (_parse_loop) старым EveParser;
-        # main.py использует уже готовый (state, draw_list) из очереди.
-        self.bot = EveBot()
-        
+        # Парсинг выполняется в client.py (_parse_loop) единым парсером EveParserNew
+        # (new_parser.py); main.py использует готовый (state, draw_list, payload) из очереди.
+        self.bot = EveBot(stats=self.stats)
+
         self.running = False
         self.game_hwnd = None
         self.last_game_width = 1024
@@ -228,22 +234,53 @@ class EveApp:
         return self.last_game_width
 
     def build_ui(self):
-        btn_frame = tk.Frame(self.root, bg='#1a1a1a', pady=10)
+        # ---- Баннер состояния бота (красный/жёлтый/зелёный/синий) ----
+        self.status_banner = tk.Label(self.root, text="SYSTEM STANDBY", bg='#263238', fg='#9aa7ad',
+                                      font=("Consolas", 13, "bold"), pady=7, anchor="center")
+        self.status_banner.pack(fill=tk.X, padx=10, pady=(10, 0))
+
+        # ---- Статистика сессии (обновляется из self.stats) ----
+        self.stats_frame = tk.Frame(self.root, bg='#1a1a1a')
+        self.stats_frame.pack(fill=tk.X, padx=10, pady=(6, 0))
+        self.stat_vars = {
+            'sites':   tk.StringVar(value='0'),
+            'kills':   tk.StringVar(value='0'),
+            'drones':  tk.StringVar(value='0'),
+            'escapes': tk.StringVar(value='0'),
+        }
+        for key, label in (('sites', 'SITES'), ('kills', 'KILLS'),
+                           ('drones', 'DRONES LOST'), ('escapes', 'ESCAPES')):
+            cell = tk.Frame(self.stats_frame, bg='#1a1a1a')
+            cell.pack(side=tk.LEFT, expand=True, fill=tk.X)
+            tk.Label(cell, text=label, bg='#1a1a1a', fg='#666666',
+                     font=("Arial", 7, "bold")).pack()
+            tk.Label(cell, textvariable=self.stat_vars[key], bg='#1a1a1a', fg='#88ddff',
+                     font=("Consolas", 12, "bold")).pack()
+
+        btn_frame = tk.Frame(self.root, bg='#1a1a1a', pady=8)
         btn_frame.pack(fill=tk.X, padx=10)
-        
-        self.btn_start = tk.Button(btn_frame, text="START BOT", bg='#1b5e20', fg='white', command=self.start_bot, height=2, font=("Arial", 10, "bold"))
+
+        self.btn_start = tk.Button(btn_frame, text="START BOT", bg='#1b5e20', fg='white',
+                                   command=self.start_bot, height=2, font=("Arial", 10, "bold"))
         self.btn_start.pack(fill=tk.X, pady=2)
-        
-        self.btn_stop = tk.Button(btn_frame, text="STOP BOT", bg='#b71c1c', fg='white', command=self.stop_bot, height=2, state="disabled", font=("Arial", 10, "bold"))
+
+        self.btn_stop = tk.Button(btn_frame, text="STOP BOT", bg='#b71c1c', fg='white',
+                                  command=self.stop_bot, height=2, state="disabled",
+                                  font=("Arial", 10, "bold"))
         self.btn_stop.pack(fill=tk.X, pady=2)
 
-        self.btn_parser_debug = tk.Button(btn_frame, text="SHOW NEW PARSER DEBUG", bg='#37474f', fg='white',
+        self.btn_parser_debug = tk.Button(btn_frame, text="SHOW PARSER DEBUG", bg='#37474f', fg='white',
                                           command=self.toggle_parser_debug, height=1, font=("Arial", 9, "bold"))
         self.btn_parser_debug.pack(fill=tk.X, pady=2)
 
-        opts_frame = tk.Frame(self.root, bg='#1a1a1a', padx=10, pady=5)
+        # Кнопка выгрузки последнего сырого JSON-дампа для отладки парсера
+        self.btn_dump_json = tk.Button(btn_frame, text="ВЫГРУЗИТЬ СЫРОЙ JSON", bg='#4a3b00', fg='#ffdd88',
+                                       command=self.dump_raw_snapshot, height=1, font=("Arial", 9, "bold"))
+        self.btn_dump_json.pack(fill=tk.X, pady=2)
+
+        opts_frame = tk.Frame(self.root, bg='#1a1a1a', padx=10, pady=4)
         opts_frame.pack(fill=tk.X)
-        
+
         self.mode_var = tk.BooleanVar(value=False)
         self.mode_check = tk.Checkbutton(opts_frame, text="Mode: DRONES (On/Off)", variable=self.mode_var,
                                         command=self.on_mode_change,
@@ -251,9 +288,16 @@ class EveApp:
                                         selectcolor='black', activebackground='#1a1a1a',
                                         activeforeground='#00ffaa')
         self.mode_check.pack(anchor="w")
-        
+
+        self.verbose_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(opts_frame, text="Verbose Log", variable=self.verbose_var, command=self.toggle_verbose,
+                       bg='#1a1a1a', fg='#cccccc', selectcolor='black',
+                       activebackground='#1a1a1a', activeforeground='#ffffff').pack(anchor="w")
+
         self.debug_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(opts_frame, text="Show Debug HUD", variable=self.debug_var, command=self.toggle_debug, bg='#1a1a1a', fg='white', selectcolor='black', activebackground='#1a1a1a').pack(anchor="w")
+        tk.Checkbutton(opts_frame, text="Show Debug HUD", variable=self.debug_var, command=self.toggle_debug,
+                       bg='#1a1a1a', fg='white', selectcolor='black',
+                       activebackground='#1a1a1a').pack(anchor="w")
 
         tk.Label(self.root, text="WORLD STATUS", bg='#1a1a1a', fg='#888888', font=("Arial", 8, "bold")).pack(anchor="w", padx=10)
         # state="disabled" позволяет копировать, но запрещает ввод
@@ -270,6 +314,57 @@ class EveApp:
         mode = "DRONES" if self.mode_var.get() else "GUNS"
         self.update_log_widget(f"Combat mode changed to: {mode}")
 
+    def toggle_verbose(self):
+        """Синхронизация расширенного лога бота и клиента с чекбоксом."""
+        on = self.verbose_var.get()
+        self.client.verbose = on
+        self.bot.verbose = on
+        self.update_log_widget(f"Verbose log: {'ON' if on else 'OFF'}")
+
+    def dump_raw_snapshot(self):
+        """Кнопка 'ВЫГРУЗИТЬ СЫРОЙ JSON': сохраняет последний дамп eveui.exe в файл."""
+        try:
+            path = self.client.dump_raw_json()
+        except RuntimeError as e:
+            self.update_log_widget(f"DUMP FAILED: {e}")
+            return
+        self.update_log_widget(f"RAW JSON -> {path}")
+        print(f"[App] raw dump saved: {path}")
+
+    def update_banner(self, state):
+        """Цвет+текст баннера: приоритет DANGER > WARP > DOCKED > LOADING > режим боя."""
+        mission = ""
+        if self.bot._mission != 'IDLE' and self.bot._current_anom:
+            mission = f"  |  {self.bot._mission}: {self.bot._current_anom}"
+
+        if state.local_has_hostile or state.local_has_neutral:
+            hostile = "HOSTILE" if state.local_has_hostile else "NEUTRAL"
+            self.status_banner.config(text=f"DANGER: {hostile} IN LOCAL{mission}",
+                                      bg='#8b0000', fg='#ff8888')
+        elif state.is_warp:
+            self.status_banner.config(text=f"WARP{mission}", bg='#1565c0', fg='#b3e5fc')
+        elif state.is_docked:
+            self.status_banner.config(text="DOCKED", bg='#37474f', fg='#cfd8dc')
+        elif state.is_loading:
+            self.status_banner.config(text="LOADING", bg='#263238', fg='#9aa7ad')
+        elif state.combat_mode_active in ("COMBAT", "GUNS", "DRONES"):
+            self.status_banner.config(text=f"COMBAT: {state.combat_mode_active}{mission}",
+                                      bg='#1b5e20', fg='#c8e6c9')
+        elif state.combat_mode_active == "SCANNING":
+            self.status_banner.config(text=f"SCANNING / FLYING TO SITE{mission}",
+                                      bg='#37474f', fg='#80cbc4')
+        elif state.combat_mode_active == "SAFETY":
+            self.status_banner.config(text="SAFETY MODE", bg='#8b0000', fg='#ff8888')
+        else:
+            self.status_banner.config(text="IDLE — STANDING BY", bg='#263238', fg='#9aa7ad')
+
+    def update_session_stats(self):
+        """Панель статистики: читает self.stats (обновляет бот в bot.py)."""
+        self.stat_vars['sites'].set(str(self.stats.get('sites_cleared', 0)))
+        self.stat_vars['kills'].set(str(self.stats.get('kills', 0)))
+        self.stat_vars['drones'].set(str(self.stats.get('drones_lost', 0)))
+        self.stat_vars['escapes'].set(str(self.stats.get('escapes', 0)))
+
     def toggle_debug(self):
         if self.debug_var.get(): self.debug_window.deiconify()
         else: self.debug_window.withdraw()
@@ -282,6 +377,7 @@ class EveApp:
             pass
 
     def _apply_new_state(self, state):
+        self.last_state = state
         if not self.parser_debug_window or not self.parser_debug_window.winfo_exists():
             return
         self.parser_debug_window.set_state(state)
@@ -292,14 +388,14 @@ class EveApp:
             return
         if self.parser_debug_window.state() == "normal":
             self.parser_debug_window.withdraw()
-            self.btn_parser_debug.config(text="SHOW NEW PARSER DEBUG")
+            self.btn_parser_debug.config(text="SHOW PARSER DEBUG")
         else:
             self.parser_debug_window.deiconify()
             self.parser_debug_window.lift()
             # Сразу показываем последнее известное состояние, если оно есть
             if self.parser_debug_window._latest_state is not None:
                 self.parser_debug_window.render()
-            self.btn_parser_debug.config(text="HIDE NEW PARSER DEBUG")
+            self.btn_parser_debug.config(text="HIDE PARSER DEBUG")
 
     def start_bot(self):
         self.running = True
@@ -332,7 +428,18 @@ class EveApp:
 
     def generate_report(self, state):
         report = []
-        safety = "!!! DANGER !!!" if (state.hostiles_in_local or state.local_has_neutral) else "LOCAL SAFE"
+
+        # Текущая миссия бота (полёт по аномалиям из probe scanner)
+        mission = self.bot._mission
+        if mission != 'IDLE':
+            anom = self.bot._current_anom or '?'
+            report.append(f"MISSION: {mission} -> {anom}")
+        elif not self.running:
+            report.append("MISSION: BOT STOPPED")
+        else:
+            report.append("MISSION: STANDING BY")
+
+        safety = "!!! DANGER !!!" if (state.local_has_hostile or state.local_has_neutral) else "LOCAL SAFE"
         report.append(f"DEFENSE: {safety}")
         
         nav = "STATIONARY"
@@ -397,22 +504,28 @@ class EveApp:
     def logic_loop(self):
         if not self.root.winfo_exists(): return
         try:
-            state, draw_list = self.client.queue.get_nowait()
-            # (state, draw_list) уже готовы — их положил client._parse_loop
-            
+            state, draw_list, payload = self.client.queue.get_nowait()
+            # (state, draw_list, payload) уже готовы — их положил client._parse_loop.
+            # payload — JSON-структура для исполнительного бота/нейросети
+            # (state_json.py), она же пишется в state_payload.json.
+
             # Обновление текста состояния (с возможностью выделения)
             self.status_view.config(state="normal")
             self.status_view.delete("1.0", tk.END)
             self.status_view.insert("1.0", self.generate_report(state))
             self.status_view.config(state="disabled")
-            
-            if state.hostiles_in_local or state.local_has_neutral:
+
+            if state.local_has_hostile or state.local_has_neutral:
                 self.status_view.config(fg="#ff5555")
             else:
                 self.status_view.config(fg="#00ccff")
 
             if self.running:
                 self.bot.think(state, use_drones=self.mode_var.get())
+
+            # Баннер состояния + панель статистики (дёшево, каждый тик)
+            self.update_banner(state)
+            self.update_session_stats()
 
             if self.debug_var.get():
                 self.render_debug(draw_list)

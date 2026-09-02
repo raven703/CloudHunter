@@ -1,0 +1,1140 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "timestamp": 1788362139.975,
+    "datetime": "2026-09-02 18:15:39",
+    "window": {
+      "width": 1697,
+      "height": 1001
+    },
+    "ui_root_address": "0x1E2789B4240",
+    "is_loading": false,
+    "fps": 0
+  },
+  "system": {
+    "current_system": "",
+    "security_status": 0.0,
+    "nearest_location": "",
+    "sovereignty_holder": "",
+    "route_destination": "",
+    "bounty_risk": 0.0
+  },
+  "ship": {
+    "hp": {
+      "shield_pct": 100.0,
+      "armor_pct": 100.0,
+      "structure_pct": 100.0,
+      "capacitor_pct": 100.0
+    },
+    "speed_mps": 0.0,
+    "movement": {
+      "is_warp": false,
+      "is_establishing": false,
+      "is_orbiting": false,
+      "is_docked": false,
+      "state": "STATIONARY"
+    },
+    "is_pvp": false
+  },
+  "modules": {
+    "status": {
+      "inFlightHighSlot1": "READY",
+      "inFlightMediumSlot1": "READY",
+      "inFlightMediumSlot3": "READY",
+      "inFlightLowSlot1": "READY",
+      "inFlightLowSlot2": "READY",
+      "inFlightLowSlot3": "READY"
+    },
+    "repairers": {
+      "inFlightLowSlot3": "READY"
+    },
+    "high_slots": [
+      {
+        "name": "inFlightHighSlot1",
+        "active": false,
+        "icon": "res:/ui/texture/icons/16_64_6.png"
+      }
+    ],
+    "medium_slots": [
+      {
+        "name": "inFlightMediumSlot1",
+        "active": false,
+        "icon": "res:/ui/texture/icons/3_64_2.png"
+      },
+      {
+        "name": "inFlightMediumSlot3",
+        "active": false,
+        "icon": "res:/ui/texture/icons/12_64_6.png"
+      }
+    ],
+    "low_slots": [
+      {
+        "name": "inFlightLowSlot1",
+        "active": false,
+        "icon": "res:/ui/texture/icons/105_32_47.png"
+      },
+      {
+        "name": "inFlightLowSlot2",
+        "active": false,
+        "icon": "res:/ui/texture/icons/108_64_10.png"
+      },
+      {
+        "name": "inFlightLowSlot3",
+        "active": false,
+        "icon": "res:/ui/texture/icons/1_64_11.png"
+      }
+    ]
+  },
+  "drones": {
+    "in_bay": 9,
+    "in_space": 5,
+    "max": 5,
+    "idle": true,
+    "fighting": false,
+    "returning": false,
+    "under_attack": false,
+    "entries": [
+      {
+        "name": "Caldari Navy Vespa",
+        "status": "IDLE",
+        "hp": 100.0,
+        "under_attack": false
+      },
+      {
+        "name": "Federation Navy Hammerhead",
+        "status": "IDLE",
+        "hp": 100.0,
+        "under_attack": false
+      },
+      {
+        "name": "Federation Navy Hammerhead",
+        "status": "IDLE",
+        "hp": 100.0,
+        "under_attack": false
+      },
+      {
+        "name": "Infiltrator II",
+        "status": "IDLE",
+        "hp": 100.0,
+        "under_attack": false
+      },
+      {
+        "name": "Infiltrator II",
+        "status": "IDLE",
+        "hp": 100.0,
+        "under_attack": false
+      }
+    ]
+  },
+  "targets": {
+    "count": 1,
+    "active": {
+      "name": "4GQ-XQ - Kuvakei [FVHC]",
+      "distance": 0.0,
+      "is_active": true,
+      "x": 505,
+      "y": 614
+    },
+    "locked": [
+      {
+        "name": "4GQ-XQ - Kuvakei [FVHC]",
+        "distance": 0.0,
+        "is_active": true,
+        "x": 505,
+        "y": 614
+      }
+    ]
+  },
+  "npc": {
+    "count": 0,
+    "all": [],
+    "frigates": [],
+    "cruisers": [],
+    "battlecruisers": [],
+    "battleships": []
+  },
+  "local_chat": {
+    "player_count": 3,
+    "has_neutral": true,
+    "has_hostile": false,
+    "threat": "NEUTRAL",
+    "players": [
+      {
+        "name": "AHGEL",
+        "standing": "NEUTRAL",
+        "alliance": false,
+        "x": 157,
+        "y": 32
+      },
+      {
+        "name": "Evil Ahishatsu",
+        "standing": "NEUTRAL",
+        "alliance": false,
+        "x": 157,
+        "y": 100
+      },
+      {
+        "name": "Dakre",
+        "standing": "ALLIANCE",
+        "alliance": true,
+        "x": 157,
+        "y": 66
+      }
+    ]
+  },
+  "overview": [
+    {
+      "name": "4GQ-XQ IX - Moon 1 - True Creations Shipyard",
+      "distance": 4306000.0,
+      "type": "station",
+      "x": 3,
+      "y": 4,
+      "icon": "res:/UI/Texture/Shared/Brackets/station.png"
+    },
+    {
+      "name": "Athanor",
+      "distance": 5662000.0,
+      "type": "",
+      "x": 3,
+      "y": 4,
+      "icon": "res:/UI/Texture/Shared/Brackets/refineryMedium.png"
+    },
+    {
+      "name": "4GQ-XQ - Kuvakei",
+      "distance": 0.0,
+      "type": "citadel",
+      "x": 3,
+      "y": 4,
+      "icon": "res:/UI/Texture/Shared/Brackets/citadelExtraLarge.png"
+    },
+    {
+      "name": "4GQ-XQ - STAINHUB",
+      "distance": 7117000.0,
+      "type": "citadel",
+      "x": 3,
+      "y": 4,
+      "icon": "res:/UI/Texture/Shared/Brackets/citadelMedium.png"
+    },
+    {
+      "name": "4GQ-XQ - 197",
+      "distance": 7669000.0,
+      "type": "",
+      "x": 3,
+      "y": 4,
+      "icon": "res:/UI/Texture/Shared/Brackets/engineeringComplexLarge.png"
+    },
+    {
+      "name": "2,6 AU",
+      "distance": 0.0,
+      "type": "stargate",
+      "x": 3,
+      "y": 4,
+      "icon": "res:/UI/Texture/Shared/Brackets/stargate.png"
+    },
+    {
+      "name": "5,9 AU",
+      "distance": 0.0,
+      "type": "stargate",
+      "x": 3,
+      "y": 4,
+      "icon": "res:/UI/Texture/Shared/Brackets/stargate.png"
+    },
+    {
+      "name": "19,6 AU",
+      "distance": 0.0,
+      "type": "stargate",
+      "x": 3,
+      "y": 4,
+      "icon": "res:/UI/Texture/Shared/Brackets/stargate.png"
+    },
+    {
+      "name": "19,6 AU",
+      "distance": 0.0,
+      "type": "station",
+      "x": 3,
+      "y": 4,
+      "icon": "res:/UI/Texture/Shared/Brackets/station.png"
+    },
+    {
+      "name": "27,7 AU",
+      "distance": 0.0,
+      "type": "stargate",
+      "x": 3,
+      "y": 4,
+      "icon": "res:/UI/Texture/Shared/Brackets/stargate.png"
+    }
+  ],
+  "selected_item": {
+    "name": "4GQ-XQ - Kuvakei",
+    "distance": 0.0,
+    "is_target": true,
+    "icon": "res:/dx9/model/deployables/generic/citadel/xl/cxl1/icons/21139_64.png",
+    "x": 1241,
+    "y": 0,
+    "w": 456,
+    "h": 140,
+    "actions": [
+      {
+        "name": "selectedItemApproach",
+        "action": "Approach",
+        "x": 1251,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/approach_32px.png"
+      },
+      {
+        "name": "selectedItemWarpTo",
+        "action": "Warp To",
+        "x": 1287,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/warp_to_32px.png"
+      },
+      {
+        "name": "selectedItemDock",
+        "action": "Dock",
+        "x": 1323,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/dock_32px.png"
+      },
+      {
+        "name": "selectedItemAccessDropbox",
+        "action": "Access Dropbox",
+        "x": 1359,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/open_cargo_32px.png"
+      },
+      {
+        "name": "selectedItemOrbit",
+        "action": "Orbit",
+        "x": 1395,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/orbit_32px.png"
+      },
+      {
+        "name": "selectedItemKeepAtRange",
+        "action": "Keep at Range",
+        "x": 1431,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/keep_at_distance_32px.png"
+      },
+      {
+        "name": "selectedItemUnLockTarget",
+        "action": "Unlock Target",
+        "x": 1467,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/target_32px.png"
+      },
+      {
+        "name": "selectedItemLookAt",
+        "action": "Look At",
+        "x": 1503,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/look_at_32px.png"
+      },
+      {
+        "name": "selectedItemSetInterest",
+        "action": "Set Interest",
+        "x": 1539,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/camera_track_32px.png"
+      },
+      {
+        "name": "selectedItemShowInfo",
+        "action": "Show Info",
+        "x": 1575,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/show_info_32px.png"
+      }
+    ]
+  },
+  "scanner": [
+    {
+      "id": "CWL-876",
+      "name": "",
+      "group": "Cosmic Signature",
+      "distance": 2140745529717.0,
+      "signal": 0.0,
+      "type": "signature",
+      "x": 558,
+      "y": 82,
+      "h": 20
+    },
+    {
+      "id": "FWV-374",
+      "name": "",
+      "group": "Cosmic Signature",
+      "distance": 718069779360.0,
+      "signal": 0.0,
+      "type": "signature",
+      "x": 558,
+      "y": 102,
+      "h": 20
+    },
+    {
+      "id": "ZYY-853",
+      "name": "",
+      "group": "Cosmic Signature",
+      "distance": 2239480124379.0,
+      "signal": 0.0,
+      "type": "signature",
+      "x": 558,
+      "y": 122,
+      "h": 20
+    },
+    {
+      "id": "YYC-824",
+      "name": "",
+      "group": "Cosmic Signature",
+      "distance": 1101040328352.0,
+      "signal": 0.0,
+      "type": "signature",
+      "x": 558,
+      "y": 142,
+      "h": 20
+    },
+    {
+      "id": "CAC-650",
+      "name": "Medium Arkonor and Bistot Deposit",
+      "group": "Ore Site",
+      "distance": 930498755754.0,
+      "signal": 0.0,
+      "type": "ore",
+      "x": 558,
+      "y": 162,
+      "h": 20
+    },
+    {
+      "id": "MFG-730",
+      "name": "Sansha Forsaken Hub",
+      "group": "Combat Site",
+      "distance": 1424171729064.0,
+      "signal": 0.0,
+      "type": "combat",
+      "x": 558,
+      "y": 182,
+      "h": 20
+    },
+    {
+      "id": "ETX-542",
+      "name": "Small Arkonor and Bistot Deposit",
+      "group": "Ore Site",
+      "distance": 2743624948638.0,
+      "signal": 0.0,
+      "type": "ore",
+      "x": 558,
+      "y": 202,
+      "h": 20
+    }
+  ],
+  "context_menu": {
+    "open": true,
+    "type": "ContextSubMenu",
+    "items": [
+      {
+        "type": "entry",
+        "name": "context_menu_Warp to Within",
+        "text": "Warp to Within (0 m)",
+        "x": 1341,
+        "y": 611,
+        "w": 221,
+        "h": 22,
+        "has_submenu": true,
+        "icon": ""
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_Align to",
+        "text": "Align to",
+        "x": 1341,
+        "y": 633,
+        "w": 221,
+        "h": 22,
+        "has_submenu": false,
+        "icon": ""
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_Look at",
+        "text": "Look at",
+        "x": 1341,
+        "y": 655,
+        "w": 221,
+        "h": 22,
+        "has_submenu": false,
+        "icon": null
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_Track",
+        "text": "Track",
+        "x": 1341,
+        "y": 677,
+        "w": 221,
+        "h": 22,
+        "has_submenu": false,
+        "icon": null
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_Show Info",
+        "text": "Show Info",
+        "x": 1341,
+        "y": 712,
+        "w": 221,
+        "h": 22,
+        "has_submenu": false,
+        "icon": null
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_Add Asteroid Belt to Overview",
+        "text": "Add Asteroid Belt to Overview",
+        "x": 1341,
+        "y": 747,
+        "w": 221,
+        "h": 22,
+        "has_submenu": false,
+        "icon": null
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_Save Location...",
+        "text": "Save Location...",
+        "x": 1341,
+        "y": 769,
+        "w": 221,
+        "h": 22,
+        "has_submenu": false,
+        "icon": null
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_4GQ-XQ III - Asteroid Belt 1",
+        "text": "4GQ-XQ III - Asteroid Belt 1",
+        "x": 1113,
+        "y": 611,
+        "w": 218,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Icons/1_16_14.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_4GQ-XQ VII - Asteroid Belt 1",
+        "text": "4GQ-XQ VII - Asteroid Belt 1",
+        "x": 1113,
+        "y": 633,
+        "w": 218,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Icons/1_16_14.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_4GQ-XQ X - Asteroid Belt 1",
+        "text": "4GQ-XQ X - Asteroid Belt 1",
+        "x": 1113,
+        "y": 655,
+        "w": 218,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Icons/1_16_14.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_4GQ-XQ XII - Asteroid Belt 1",
+        "text": "4GQ-XQ XII - Asteroid Belt 1",
+        "x": 1113,
+        "y": 677,
+        "w": 218,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Icons/1_16_14.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_4GQ-XQ XII - Asteroid Belt 2",
+        "text": "4GQ-XQ XII - Asteroid Belt 2",
+        "x": 1113,
+        "y": 699,
+        "w": 218,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Icons/1_16_14.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_4GQ-XQ XIV - Asteroid Belt 1",
+        "text": "4GQ-XQ XIV - Asteroid Belt 1",
+        "x": 1113,
+        "y": 721,
+        "w": 218,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Icons/1_16_14.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_4GQ-XQ XIV - Asteroid Belt 2",
+        "text": "4GQ-XQ XIV - Asteroid Belt 2",
+        "x": 1113,
+        "y": 743,
+        "w": 218,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Icons/1_16_14.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_4GQ-XQ XIV - Asteroid Belt 3",
+        "text": "4GQ-XQ XIV - Asteroid Belt 3",
+        "x": 1113,
+        "y": 765,
+        "w": 218,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Icons/1_16_14.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_4GQ-XQ XIV - Asteroid Belt 4",
+        "text": "4GQ-XQ XIV - Asteroid Belt 4",
+        "x": 1113,
+        "y": 787,
+        "w": 218,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Icons/1_16_14.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_4GQ-XQ XIV - Asteroid Belt 5",
+        "text": "4GQ-XQ XIV - Asteroid Belt 5",
+        "x": 1113,
+        "y": 809,
+        "w": 218,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Icons/1_16_14.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_4GQ-XQ XIV - Asteroid Belt 6",
+        "text": "4GQ-XQ XIV - Asteroid Belt 6",
+        "x": 1113,
+        "y": 831,
+        "w": 218,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Icons/1_16_14.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_4GQ-XQ XIV - Asteroid Belt 7",
+        "text": "4GQ-XQ XIV - Asteroid Belt 7",
+        "x": 1113,
+        "y": 853,
+        "w": 218,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Icons/1_16_14.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_4GQ-XQ XIV - Asteroid Belt 8",
+        "text": "4GQ-XQ XIV - Asteroid Belt 8",
+        "x": 1113,
+        "y": 875,
+        "w": 218,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Icons/1_16_14.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_4GQ-XQ XIV - Asteroid Belt 9",
+        "text": "4GQ-XQ XIV - Asteroid Belt 9",
+        "x": 1113,
+        "y": 897,
+        "w": 218,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Icons/1_16_14.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_4GQ-XQ XIV - Asteroid Belt 10",
+        "text": "4GQ-XQ XIV - Asteroid Belt 10",
+        "x": 1113,
+        "y": 919,
+        "w": 218,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Icons/1_16_14.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_4GQ-XQ XIV - Asteroid Belt 11",
+        "text": "4GQ-XQ XIV - Asteroid Belt 11",
+        "x": 1113,
+        "y": 941,
+        "w": 218,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Icons/1_16_14.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_4GQ-XQ XV - Asteroid Belt 1",
+        "text": "4GQ-XQ XV - Asteroid Belt 1",
+        "x": 1113,
+        "y": 963,
+        "w": 218,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Icons/1_16_14.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_Look At My Ship",
+        "text": "Look At My Ship",
+        "x": 847,
+        "y": 646,
+        "w": 256,
+        "h": 22,
+        "has_submenu": false,
+        "icon": null
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_Show Info",
+        "text": "Show Info",
+        "x": 847,
+        "y": 681,
+        "w": 256,
+        "h": 22,
+        "has_submenu": false,
+        "icon": null
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_Show Solar System in Map Browser",
+        "text": "Show Solar System in Map Browser",
+        "x": 847,
+        "y": 716,
+        "w": 256,
+        "h": 22,
+        "has_submenu": false,
+        "icon": null
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_Asteroid Belts",
+        "text": "Asteroid Belts",
+        "x": 847,
+        "y": 751,
+        "w": 256,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Shared/Brackets/asteroidBelt.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_Planets",
+        "text": "Planets",
+        "x": 847,
+        "y": 773,
+        "w": 256,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Shared/Brackets/planet.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_Stargates",
+        "text": "Stargates",
+        "x": 847,
+        "y": 795,
+        "w": 256,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Shared/Brackets/stargate.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_Stations",
+        "text": "Stations",
+        "x": 847,
+        "y": 817,
+        "w": 256,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Shared/Brackets/station.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_Structures",
+        "text": "Structures",
+        "x": 847,
+        "y": 839,
+        "w": 256,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/eveicon/bracket_icons/auto_moon_miner_bracket_16px.png"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_Anomalies",
+        "text": "Anomalies",
+        "x": 847,
+        "y": 861,
+        "w": 256,
+        "h": 22,
+        "has_submenu": true,
+        "icon": "res:/UI/Texture/Shared/Brackets/combatSite_16.png"
+      },
+      {
+        "type": "separator"
+      },
+      {
+        "type": "entry",
+        "name": "context_menu_Locations",
+        "text": "Locations",
+        "x": 847,
+        "y": 896,
+        "w": 256,
+        "h": 22,
+        "has_submenu": true,
+        "icon": ""
+      }
+    ]
+  },
+  "asteroid_belts": [
+    {
+      "name": "4GQ-XQ III - Asteroid Belt 1",
+      "planet": "4GQ-XQ III",
+      "belt": 1,
+      "x": 1113,
+      "y": 611,
+      "w": 218,
+      "h": 22
+    },
+    {
+      "name": "4GQ-XQ VII - Asteroid Belt 1",
+      "planet": "4GQ-XQ VII",
+      "belt": 1,
+      "x": 1113,
+      "y": 633,
+      "w": 218,
+      "h": 22
+    },
+    {
+      "name": "4GQ-XQ X - Asteroid Belt 1",
+      "planet": "4GQ-XQ X",
+      "belt": 1,
+      "x": 1113,
+      "y": 655,
+      "w": 218,
+      "h": 22
+    },
+    {
+      "name": "4GQ-XQ XII - Asteroid Belt 1",
+      "planet": "4GQ-XQ XII",
+      "belt": 1,
+      "x": 1113,
+      "y": 677,
+      "w": 218,
+      "h": 22
+    },
+    {
+      "name": "4GQ-XQ XII - Asteroid Belt 2",
+      "planet": "4GQ-XQ XII",
+      "belt": 2,
+      "x": 1113,
+      "y": 699,
+      "w": 218,
+      "h": 22
+    },
+    {
+      "name": "4GQ-XQ XIV - Asteroid Belt 1",
+      "planet": "4GQ-XQ XIV",
+      "belt": 1,
+      "x": 1113,
+      "y": 721,
+      "w": 218,
+      "h": 22
+    },
+    {
+      "name": "4GQ-XQ XIV - Asteroid Belt 2",
+      "planet": "4GQ-XQ XIV",
+      "belt": 2,
+      "x": 1113,
+      "y": 743,
+      "w": 218,
+      "h": 22
+    },
+    {
+      "name": "4GQ-XQ XIV - Asteroid Belt 3",
+      "planet": "4GQ-XQ XIV",
+      "belt": 3,
+      "x": 1113,
+      "y": 765,
+      "w": 218,
+      "h": 22
+    },
+    {
+      "name": "4GQ-XQ XIV - Asteroid Belt 4",
+      "planet": "4GQ-XQ XIV",
+      "belt": 4,
+      "x": 1113,
+      "y": 787,
+      "w": 218,
+      "h": 22
+    },
+    {
+      "name": "4GQ-XQ XIV - Asteroid Belt 5",
+      "planet": "4GQ-XQ XIV",
+      "belt": 5,
+      "x": 1113,
+      "y": 809,
+      "w": 218,
+      "h": 22
+    },
+    {
+      "name": "4GQ-XQ XIV - Asteroid Belt 6",
+      "planet": "4GQ-XQ XIV",
+      "belt": 6,
+      "x": 1113,
+      "y": 831,
+      "w": 218,
+      "h": 22
+    },
+    {
+      "name": "4GQ-XQ XIV - Asteroid Belt 7",
+      "planet": "4GQ-XQ XIV",
+      "belt": 7,
+      "x": 1113,
+      "y": 853,
+      "w": 218,
+      "h": 22
+    },
+    {
+      "name": "4GQ-XQ XIV - Asteroid Belt 8",
+      "planet": "4GQ-XQ XIV",
+      "belt": 8,
+      "x": 1113,
+      "y": 875,
+      "w": 218,
+      "h": 22
+    },
+    {
+      "name": "4GQ-XQ XIV - Asteroid Belt 9",
+      "planet": "4GQ-XQ XIV",
+      "belt": 9,
+      "x": 1113,
+      "y": 897,
+      "w": 218,
+      "h": 22
+    },
+    {
+      "name": "4GQ-XQ XIV - Asteroid Belt 10",
+      "planet": "4GQ-XQ XIV",
+      "belt": 10,
+      "x": 1113,
+      "y": 919,
+      "w": 218,
+      "h": 22
+    },
+    {
+      "name": "4GQ-XQ XIV - Asteroid Belt 11",
+      "planet": "4GQ-XQ XIV",
+      "belt": 11,
+      "x": 1113,
+      "y": 941,
+      "w": 218,
+      "h": 22
+    },
+    {
+      "name": "4GQ-XQ XV - Asteroid Belt 1",
+      "planet": "4GQ-XQ XV",
+      "belt": 1,
+      "x": 1113,
+      "y": 963,
+      "w": 218,
+      "h": 22
+    }
+  ],
+  "neocom": {
+    "buttons": [
+      {
+        "name": "mail",
+        "has_notification": true,
+        "notification_count": 0
+      },
+      {
+        "name": "market",
+        "has_notification": false,
+        "notification_count": 0
+      },
+      {
+        "name": "fitting",
+        "has_notification": false,
+        "notification_count": 0
+      },
+      {
+        "name": "fleet",
+        "has_notification": false,
+        "notification_count": 0
+      },
+      {
+        "name": "chat",
+        "has_notification": true,
+        "notification_count": 1
+      },
+      {
+        "name": "assets",
+        "has_notification": false,
+        "notification_count": 0
+      },
+      {
+        "name": "inventory",
+        "has_notification": false,
+        "notification_count": 0
+      },
+      {
+        "name": "wallet",
+        "has_notification": false,
+        "notification_count": 0
+      },
+      {
+        "name": "uicontrols.Window",
+        "has_notification": true,
+        "notification_count": 0
+      },
+      {
+        "name": "uicontrols.Window",
+        "has_notification": true,
+        "notification_count": 0
+      }
+    ],
+    "clock": "05:57"
+  },
+  "executor": {
+    "combat_mode": "SAFETY",
+    "threat_level": 1,
+    "recommended_action": "EMERGENCY_EXIT",
+    "lock_candidates": [],
+    "recall_drones": false,
+    "activate_repairer": "inFlightLowSlot3",
+    "reason": "NEUTRAL pilot in local"
+  },
+  "nn_features": {
+    "hp_shield": 1.0,
+    "hp_armor": 1.0,
+    "hp_structure": 1.0,
+    "hp_capacitor": 1.0,
+    "speed_mps": 0.0,
+    "is_warp": 0,
+    "is_establishing": 0,
+    "is_orbiting": 0,
+    "is_docked": 0,
+    "drones_in_bay": 9,
+    "drones_in_space": 5,
+    "drones_max": 5,
+    "drones_idle": 1,
+    "drones_fighting": 0,
+    "drones_returning": 0,
+    "drones_under_attack": 0,
+    "targets_locked": 1,
+    "npc_total": 0,
+    "npc_frigates": 0,
+    "npc_cruisers": 0,
+    "npc_battlecruisers": 0,
+    "npc_battleships": 0,
+    "local_players": 3,
+    "local_has_neutral": 1,
+    "local_has_hostile": 0,
+    "menu_open": 1,
+    "threat_level": 1
+  },
+  "debug_overlay": [
+    {
+      "rect": [
+        505,
+        614,
+        64,
+        18
+      ],
+      "color": "#ffffff",
+      "label": "TARGET",
+      "priority": 10
+    },
+    {
+      "rect": [
+        157,
+        32,
+        18,
+        16
+      ],
+      "color": "#ffdd55",
+      "label": "AHGEL",
+      "priority": 12
+    },
+    {
+      "rect": [
+        157,
+        100,
+        18,
+        16
+      ],
+      "color": "#ffdd55",
+      "label": "Evil Ahishatsu",
+      "priority": 12
+    },
+    {
+      "rect": [
+        157,
+        66,
+        18,
+        16
+      ],
+      "color": "#55ff88",
+      "label": "Dakre",
+      "priority": 12
+    }
+  ]
+}

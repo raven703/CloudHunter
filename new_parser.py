@@ -1,13 +1,15 @@
 """
-НОВЫЙ ПАРСЕР UI EVE ONLINE
-==========================
-Специализация: точный разбор локального чата (пилоты и их статусы).
+ПАРСЕР UI EVE ONLINE (единственный рабочий парсер системы)
+==========================================================
+Специализация: полный разбор UI + точный разбор локального чата (пилоты и их статусы).
 
 Интеграция в систему:
-  - Работает ПАРАЛЛЕЛЬНО со старым EveParser (parser.py) на тех же JSON-данных.
-    (см. client.py: reader_loop -> _parse_loop)
-  - Результат старого парсера по-прежнему уходит боту (bot.py не меняется).
-  - Результат ЭТОГО парсера уходит в окно отладки (main.py -> ParserDebugWindow).
+  - EveParserNew.parse() — единственная точка разбора JSON-дампов eveui.exe
+    (см. client.py: reader_loop -> _parse_loop).
+  - Результат (ParsedUIState, draw_list) кладётся в очередь для бота (bot.py)
+    и через callback уходит в окно отладки (main.py -> ParserDebugWindow).
+  - На том же состоянии state_json.build_state_payload() готовит JSON-структуру
+    для передачи исполнительному боту и нейросети (см. state_json.py).
 
 Структура локального чата в JSON:
   ChatWindowStack -> XmppChatWindow -> Container(content) -> Container(main)
@@ -35,7 +37,7 @@ from ParsedUIState import ParsedUIState
 
 # Полный разбор всего UI (HP, дроны, овервью и т.д.) переиспользуем из полного парсера,
 # а локальный чат разбираем СВОИМ (более точным) алгоритмом — см. parse_local_chat_new.
-from full_parser import parse_ui_root
+from full_parser import parse_ui_root, npc_class_from_values
 
 STANDING_NEUTRAL = "NEUTRAL"
 STANDING_HOSTILE = "HOSTILE"
@@ -329,16 +331,91 @@ def parse_local_chat_new(root: Dict) -> Dict[str, Any]:
     return result
 
 
+# ==================== КЛАССИФИКАЦИЯ NPC (из овервью) ====================
+# Перенесено из старого EveParser (_check_overview): ищем SpaceObjectIcon и
+# определяем класс NPC по строкам 'npc*' в значениях узла и его прямых детей.
+
+def _npc_ship_type(values) -> Optional[str]:
+    """Класс NPC по значениям узла ('npcfrigate' -> FRIGATE). None = не NPC.
+
+    Логика общая с full_parser.parse_overview_entry (см. npc_class_from_values).
+    """
+    return npc_class_from_values(values)
+
+
+def parse_npc_lists(root: Dict) -> Dict[str, Any]:
+    """Сбор всех NPC из овервью с классификацией и АБСОЛЮТНЫМИ координатами.
+
+    Возвращает:
+      {
+        'all':            [(x, y), ...],   # центры иконок, координаты окна игры
+        'frigates':       [(x, y), ...],
+        'cruisers':       [(x, y), ...],
+        'battlecruisers': [(x, y), ...],
+        'battleships':    [(x, y), ...],
+        'draw':           [{'rect': (x, y, w, h), 'color': '#ff3333',
+                            'priority': 15, 'label': 'FRIGATE'}, ...]
+      }
+    """
+    result: Dict[str, Any] = {
+        'all': [], 'frigates': [], 'cruisers': [],
+        'battlecruisers': [], 'battleships': [], 'draw': [],
+    }
+
+    def walk(node: Dict, px: float, py: float) -> None:
+        if not isinstance(node, dict):
+            return
+        ei = node.get('dictEntriesOfInterest', {}) or {}
+        lx, ly = get_val(ei.get('_displayX')), get_val(ei.get('_displayY'))
+        w, h = get_val(ei.get('_displayWidth')), get_val(ei.get('_displayHeight'))
+        ax, ay = px + lx, py + ly
+
+        if node.get('pythonObjectTypeName') == 'SpaceObjectIcon':
+            # Сканируем данные узла и его прямых детей на наличие 'npc'
+            values = list(ei.values())
+            for child in node.get('children', []) or []:
+                cei = child.get('dictEntriesOfInterest', {}) or {}
+                values.extend(cei.values())
+
+            ship_type = _npc_ship_type(values)
+            if ship_type:
+                coords = (ax + w / 2, ay + h / 2)
+                result['all'].append(coords)
+                if ship_type == "FRIGATE":
+                    result['frigates'].append(coords)
+                elif ship_type == "BATTLESHIP":
+                    result['battleships'].append(coords)
+                elif ship_type == "CRUISER":
+                    result['cruisers'].append(coords)
+                elif ship_type == "BATTLECRUISER":
+                    result['battlecruisers'].append(coords)
+                # Рамка NPC для Debug HUD (как в старом парсере)
+                result['draw'].append({
+                    'rect': (ax, ay, w, h),
+                    'color': '#ff3333',
+                    'priority': 15,
+                    'label': ship_type,
+                })
+
+        for child in node.get('children', []) or []:
+            walk(child, ax, ay)
+
+    walk(root, 0, 0)
+    return result
+
+
 # ==================== КЛАСС НОВОГО ПАРСЕРА ====================
 
 class EveParserNew:
-    """Новый парсер UI.
+    """Основной парсер UI EVE Online.
 
     - Весь остальной UI (HP, дроны, овервью, ...) — через full_parser.parse_ui_root.
     - Локальный чат — через parse_local_chat_new (точный алгоритм).
+    - NPC овервью — через parse_npc_lists (классификация по иконкам).
 
-    parse() возвращает (ParsedUIState, draw_list) — как старый EveParser,
-    но с корректным списком пилотов в state.local_players.
+    parse() возвращает (ParsedUIState, draw_list):
+      state       — полное состояние для бота (bot.py) и JSON-выгрузки (state_json.py);
+      draw_list   — прямоугольники для Debug HUD (main.py -> render_debug).
     """
 
     def __init__(self):
@@ -354,10 +431,27 @@ class EveParserNew:
         state.local_has_hostile = chat['has_hostile']
         state.local_players = chat['players']
 
+        # NPC из овервью (классификация: фрегаты/круизеры/линкоры и т.д.)
+        npc = parse_npc_lists(json_data)
+        state.npc_all = npc['all']
+        state.npc_frigate = npc['frigates']
+        state.npc_cruiser = npc['cruisers']
+        state.npc_battlecruiser = npc['battlecruisers']
+        state.npc_battleship = npc['battleships']
+
         # Дополнительная нормализация полей (репки, боевой режим) для отладки
         self._finalize_state(state)
 
-        draw_list = self._build_draw_list(state)
+        # draw_list: NPC (из parse_npc_lists) + захваченные цели + пилоты локала
+        draw_list = list(npc['draw'])
+        for t in state.targets or []:
+            draw_list.append({
+                'rect': (t.get('x', 0), t.get('y', 0), 64, 18),
+                'color': '#ffffff',
+                'priority': 10,
+                'label': 'TARGET',
+            })
+        draw_list.extend(self._build_draw_list(state))
         self.last_draw_list = draw_list
 
         return state, draw_list
@@ -510,7 +604,7 @@ def build_debug_blocks(state: ParsedUIState) -> List[Tuple[str, str]]:
     ts = time.strftime('%H:%M:%S', time.localtime(getattr(state, 'timestamp', 0) or 0))
 
     # ===== ЗАГОЛОВОК =====
-    add('title', "EVE NEW PARSER DEBUG")
+    add('title', "EVE PARSER DEBUG")
     dim(f"{'=' * 74}")
     dim(f"updated: {ts}  window: {state.window_width}x{state.window_height}  fps: {state.fps if state.fps else '-'}")
 
