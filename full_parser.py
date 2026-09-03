@@ -647,34 +647,29 @@ def parse_speed(root: Dict) -> float:
 # ==================== ПАРСЕР МОДУЛЕЙ ====================
 
 def parse_modules(root: Dict) -> Dict[str, Any]:
-    """Парсинг модулей"""
+    """Парсинг модулей HUD.
+
+    Для каждого слота с модулем собираем: имя, активность (ramp_active),
+    иконку и АБСОЛЮТНЫЕ координаты кнопки модуля (x/y — центр, накоплением
+    от корня дерева): бот включает модули КЛИКОМ по иконке, т.к. у средних
+    и нижних слотов нет дефолтных хоткеев (F1..F8 только у высоких).
+    """
     result = {
         'modules': {},
         'high_slots': [],
         'medium_slots': [],
         'low_slots': []
     }
-    
-    ship_ui = find_first_by_type(root, 'ShipUI')
-    if not ship_ui:
-        return result
-    
-    hud_container = find_first_by_type(ship_ui, 'HudContainer')
-    if not hud_container:
-        return result
-    
-    slots_container = find_first_by_type(hud_container, 'SlotsContainer')
-    if not slots_container:
-        return result
-    
-    for child in slots_container.get('children', []):
-        if child.get('pythonObjectTypeName') == 'ShipSlot':
-            ei = child.get('dictEntriesOfInterest', {})
+
+    def walk(node: Dict, px: float, py: float) -> None:
+        if not isinstance(node, dict):
+            return
+        ei = node.get('dictEntriesOfInterest', {}) or {}
+        ax = px + get_val(ei.get('_displayX'))
+        ay = py + get_val(ei.get('_displayY'))
+
+        if node.get('pythonObjectTypeName') == 'ShipSlot':
             slot_name = str(ei.get('_name', ''))
-            is_active = False
-            icon = None
-            
-            # Определяем тип слота
             slot_type = 'unknown'
             if 'High' in slot_name:
                 slot_type = 'high'
@@ -682,35 +677,56 @@ def parse_modules(root: Dict) -> Dict[str, Any]:
                 slot_type = 'medium'
             elif 'Low' in slot_name:
                 slot_type = 'low'
-            
-            # Проверяем активность модуля
-            for sub in child.get('children', []):
-                if sub.get('pythonObjectTypeName') == 'ModuleButton':
-                    sub_ei = sub.get('dictEntriesOfInterest', {})
-                    if sub_ei.get('ramp_active') == True:
-                        is_active = True
-                    
-                    # Ищем иконку
-                    for icon_child in sub.get('children', []):
-                        if icon_child.get('pythonObjectTypeName') == 'Icon':
-                            icon_data = icon_child.get('dictEntriesOfInterest', {})
-                            icon = str(icon_data.get('_texturePath', ''))
-            
+
+            is_active = False
+            icon = None
+            btn = None
+
+            for sub in node.get('children', []) or []:
+                if sub.get('pythonObjectTypeName') != 'ModuleButton':
+                    continue
+                sub_ei = sub.get('dictEntriesOfInterest', {}) or {}
+                if sub_ei.get('ramp_active') is True:
+                    is_active = True
+                # Координаты кнопки модуля (абсолютные, центр)
+                bx = ax + get_val(sub_ei.get('_displayX'))
+                by = ay + get_val(sub_ei.get('_displayY'))
+                bw = get_val(sub_ei.get('_displayWidth', 48))
+                bh = get_val(sub_ei.get('_displayHeight', 48))
+                btn = {
+                    'x': bx + bw // 2,
+                    'y': by + bh // 2,
+                    'w': bw,
+                    'h': bh,
+                }
+                # Ищем иконку
+                for icon_child in sub.get('children', []) or []:
+                    if icon_child.get('pythonObjectTypeName') == 'Icon':
+                        icon_data = icon_child.get('dictEntriesOfInterest', {})
+                        icon = str(icon_data.get('_texturePath', ''))
+
             module_info = {
                 'name': slot_name,
                 'active': is_active,
-                'icon': icon
+                'icon': icon,
             }
-            
+            if btn:
+                module_info.update(btn)
+
             result['modules'][slot_name] = 'ACTIVE' if is_active else 'READY'
-            
+
             if slot_type == 'high':
                 result['high_slots'].append(module_info)
             elif slot_type == 'medium':
                 result['medium_slots'].append(module_info)
             elif slot_type == 'low':
                 result['low_slots'].append(module_info)
-    
+            return   # слоты не вкладываются друг в друга
+
+        for child in node.get('children', []) or []:
+            walk(child, ax, ay)
+
+    walk(root, 0, 0)
     return result
 
 
@@ -1115,35 +1131,29 @@ def parse_selected_item(root: Dict) -> Optional[Dict]:
 # ==================== ПАРСЕР ОВЕРВЬЮ ====================
 
 def parse_overview(root: Dict) -> List[Dict]:
-    """Парсинг овервью"""
+    """Парсинг овервью.
+
+    Координаты строк (x/y — центр иконки объекта) АБСОЛЮТНЫЕ: накапливаются
+    от корня дерева, как в new_parser.parse_npc_lists — бот кликает по ним
+    (выбор цели, хоткей W + клик для орбиты).
+    """
     result = []
-    
-    overview_wnd = find_first_by_type(root, 'OverviewWindow')
-    if not overview_wnd:
-        return result
-    
-    # Ищем scroll с записями
-    for child in overview_wnd.get('children', []):
-        if child.get('pythonObjectTypeName') == 'Container':
-            if child.get('dictEntriesOfInterest', {}).get('_name') == 'content':
-                for sub in child.get('children', []):
-                    if sub.get('pythonObjectTypeName') == 'Container':
-                        if sub.get('dictEntriesOfInterest', {}).get('_name') == 'main':
-                            for scroll in sub.get('children', []):
-                                if scroll.get('pythonObjectTypeName') == 'BasicDynamicScroll':
-                                    # Ищем записи
-                                    for entry in scroll.get('children', []):
-                                        if entry.get('pythonObjectTypeName') == 'Container':
-                                            for clipper in entry.get('children', []):
-                                                if clipper.get('pythonObjectTypeName') == 'Container':
-                                                    for content in clipper.get('children', []):
-                                                        if content.get('pythonObjectTypeName') == 'Container':
-                                                            for scroll_entry in content.get('children', []):
-                                                                if scroll_entry.get('pythonObjectTypeName') == 'OverviewScrollEntry':
-                                                                    parsed = parse_overview_entry(scroll_entry)
-                                                                    if parsed:
-                                                                        result.append(parsed)
-    
+
+    def walk(node: Dict, px: float, py: float) -> None:
+        if not isinstance(node, dict):
+            return
+        ei = node.get('dictEntriesOfInterest', {}) or {}
+        ax = px + get_val(ei.get('_displayX'))
+        ay = py + get_val(ei.get('_displayY'))
+        if node.get('pythonObjectTypeName') == 'OverviewScrollEntry':
+            parsed = parse_overview_entry(node, ax, ay)
+            if parsed:
+                result.append(parsed)
+            return   # записи овервью не вкладываются друг в друга
+        for child in node.get('children', []) or []:
+            walk(child, ax, ay)
+
+    walk(root, 0, 0)
     return result
 
 
@@ -1170,8 +1180,12 @@ def npc_class_from_values(values) -> Optional[str]:
     return None
 
 
-def parse_overview_entry(entry_node: Dict) -> Optional[Dict]:
-    """Парсинг одной записи овервью"""
+def parse_overview_entry(entry_node: Dict, ox: float = 0.0, oy: float = 0.0) -> Optional[Dict]:
+    """Парсинг одной записи овервью.
+
+    ox, oy — накопленные от корня координаты записи; x/y иконки получаются
+    абсолютными (центр иконки) — бот кликает по строке (орбита W+клик).
+    """
     result = {
         'name': '',
         'distance': 0.0,
@@ -1193,9 +1207,10 @@ def parse_overview_entry(entry_node: Dict) -> Optional[Dict]:
         
         if child.get('pythonObjectTypeName') == 'SpaceObjectIcon':
             ei = child.get('dictEntriesOfInterest', {})
-            coords = get_node_coords(child)
-            result['x'] = coords['x']
-            result['y'] = coords['y']
+            coords = get_node_coords(child, ox, oy)
+            # Центр иконки (как в parse_npc_lists — туда же кликает бот)
+            result['x'] = coords['x'] + get_val(ei.get('_displayWidth', 0)) // 2
+            result['y'] = coords['y'] + get_val(ei.get('_displayHeight', 0)) // 2
             
             # Ищем иконку
             for sub in child.get('children', []):

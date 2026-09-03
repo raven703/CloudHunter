@@ -221,6 +221,7 @@ def build_state_payload(state, draw_list: Optional[List[Dict[str, Any]]] = None)
         "modules": {
             "status": dict(state.modules or {}),
             "repairers": dict(state.repairers or {}),
+            "prop_modules": dict(getattr(state, 'prop_modules', {}) or {}),
             "high_slots": list(getattr(state, 'high_slots', []) or []),
             "medium_slots": list(getattr(state, 'medium_slots', []) or []),
             "low_slots": list(getattr(state, 'low_slots', []) or []),

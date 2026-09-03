@@ -30,6 +30,7 @@ class ParsedUIState:
     # === МОДУЛИ ===
     modules: Dict[str, str] = field(default_factory=dict)  # {slot_name: "ACTIVE"|"READY"|"OFFLINE"}
     repairers: Dict[str, str] = field(default_factory=dict)  # Активные ремонтники
+    prop_modules: Dict[str, str] = field(default_factory=dict)  # Двигатель (afterburner/MWD)
     
     # === ДРОНЫ ===
     drones_in_bay: int = 0

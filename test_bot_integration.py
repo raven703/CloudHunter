@@ -39,8 +39,9 @@ else:
     # Дампа нет — синтетическое пустое состояние; секции ниже сами выставляют поля
     state, draw_list = ParsedUIState(), []
 
-# Репку делаем включённой (ACTIVE), чтобы _check_and_repair не жал F1
+# Репку делаем включённой (ACTIVE), чтобы контроль модулей не жал кликов
 state.repairers = {'inFlightLowSlot3': 'ACTIVE'}
+state.prop_modules = {}   # автоматический контроль двигателя в секциях 2-15 не тестируется
 # Секция 1: враг в локале -> аварийный выход (не зависим от содержимого дампа)
 state.local_has_hostile = True
 
@@ -112,15 +113,25 @@ print(f"2c) lock attempt     -> step={bot._combat_step}, ctrl={kd}, attempts={bo
 assert bot._combat_step == 'LOCK' and bot._lock_attempts == 1
 assert kd and kd[0] == ('ctrl',), f"lock: ctrl must be held, got {kd}"
 
-# 2d: лок не сработал (цель вне зоны захвата) -> сближение Approach
+# 2d: лок не сработал -> Approach НЕ используется: снова орбита, повтор лока
 bot._step_ts -= 10
 reset_mock()
 bot.think(state, use_drones=True)
 moves = [c.args for c in pag.moveTo.call_args_list if c.args]
-print(f"2d) out of lock range-> step={bot._combat_step}, moves={moves}")
-assert bot._combat_step == 'APPROACH'
-assert any(1265 <= m[0] <= 1300 and 110 <= m[1] <= 116 for m in moves), \
-    f"approach: must click Approach button at ~(1265..1300, 113), got {moves}"
+print(f"2d) lock failed       -> step={bot._combat_step}, moves={moves}")
+assert bot._combat_step == 'ORBIT', "approach удалён: после неудачного лока — снова орбита"
+assert any(1410 <= m[0] <= 1445 and 110 <= m[1] <= 116 for m in moves), \
+    f"must re-enable orbit via Orbit icon at ~(1410..1445, 113), got {moves}"
+
+# 2d2: после orbit_wait — повторная попытка лока (2-я), по-прежнему без approach
+bot._step_ts -= 10
+reset_mock()
+bot.think(state, use_drones=True)
+kd = [c.args for c in pag.keyDown.call_args_list if c.args]
+print(f"2d2) retry lock       -> step={bot._combat_step}, ctrl={kd}, attempts={bot._lock_attempts}")
+assert bot._combat_step == 'LOCK' and bot._lock_attempts == 2, \
+    (bot._combat_step, bot._lock_attempts)
+assert kd and kd[0] == ('ctrl',), f"lock retry: ctrl must be held, got {kd}"
 
 # 2e: цель захвачена -> ATTACK + автозапуск оружия (F1 для неактивного слота)
 state.targets = [{'name': 'Rat', 'distance': 25000.0, 'is_active': True, 'x': 100, 'y': 100}]
@@ -526,7 +537,7 @@ print("13d) Новая модалка после закрытия -> снова 
 
 # ===== 14. ЖИВОЙ ДАМП raw_dump_20260902_191755.json (модалка после варпа) =====
 print("\n--- 14. Живой дамп: Information 'Sansha Hidden Rally Point' ---")
-from full_parser import parse_modal_info
+from full_parser import parse_modal_info, parse_overview
 
 with open("raw_dump_20260902_191755.json", "r", encoding="utf-8") as f:
     live_dump = json.load(f)
@@ -551,5 +562,180 @@ bot.think(live_state, use_drones=True)
 assert pressed_keys() == ['enter'], f"живая модалка -> Enter, а не {pressed_keys()}"
 assert not pag.click.call_args_list, "на первой попытке клика быть не должно"
 print("14b) живая модалка Information -> Enter")
+
+# 14c: строки овервью в живом дампе — АБСОЛЮТНЫЕ координаты (для кликов бота)
+live_rows = parse_overview(live_dump)
+assert live_rows, "в живом дампе должны быть строки овервью"
+for r in live_rows:
+    assert r['x'] > 100 and r['y'] > 100, f"координаты строки должны быть абсолютными: {r}"
+print(f"14c) parse_overview: {len(live_rows)} строк, координаты абсолютные "
+      f"(например ({live_rows[0]['x']},{live_rows[0]['y']}))")
+
+# ===== 15. ВАРП-ГЕЙТ ЗАХВАТА ЦЕЛИ + КОНТРОЛЬ ОРБИТЫ =====
+print("\n--- 15. Захват цели: гейт по варпу + контроль орбиты ---")
+
+# 15a: NPC уже видны в овервью, но статус WARP — захвата нет (ни кликов, ни клавиш)
+bot._combat_step = 'IDLE'
+bot._current_anom = None
+bot._visited_anoms.clear()
+bot._warp_attempts = 0
+bot._last_orbit_fix_ts = 0.0
+state.npc_all = [(620.0, 410.0)]
+state.npc_frigate = []
+state.targets = []
+state.active_target = None
+state.local_has_hostile = False
+state.local_has_neutral = False
+state.is_loading = False
+state.is_warp = True
+state.selected_item = {}
+reset_mock()
+bot.think(state, use_drones=True)
+assert not pag.click.call_args_list, "в варпе не должно быть кликов выбора цели"
+assert not pag.moveTo.call_args_list, "в варпе не должно быть движений мыши"
+assert pressed_keys() == [], "в варпе не должно быть хоткеев"
+assert bot._combat_step == 'IDLE', "FSM захвата не должна стартовать в варпе"
+assert state.combat_mode_active == "COMBAT"
+print("15a) NPC видны, но is_warp=True -> захвата нет, ждём выхода из варпа")
+
+# 15b: варп закончился -> начинается выбор цели
+state.is_warp = False
+reset_mock()
+bot.think(state, use_drones=True)
+assert bot._combat_step == 'SELECT', "после выхода из варпа FSM должна выбрать цель"
+assert pag.click.call_count == 1, "выбор цели: один клик по строке овервью"
+print("15b) is_warp=False -> выбор цели начался (SELECT)")
+
+# 15c: иконки Orbit нет в окне выбранного объекта -> хоткей W + клик по строке
+bot._step_ts -= 10   # select_wait прошёл
+state.overview_entries = [
+    {'name': 'Rat Frigate', 'distance': 12000.0, 'type': '', 'x': 620, 'y': 410,
+     'icon': '', 'npc_class': 'FRIGATE'},
+]
+state.selected_item = {'name': 'Rat Frigate', 'distance': 25000.0, 'actions': [
+    {'name': 'selectedItemApproach', 'action': 'Approach', 'x': 1251, 'y': 98, 'w': 30, 'h': 30},
+]}   # кнопки Orbit нет — должен сработать W+LMB
+reset_mock()
+bot.think(state, use_drones=True)
+assert 'w' in pressed_keys(), "орбита должна включаться хоткеем W при отсутствии иконки"
+moves = [c.args for c in pag.moveTo.call_args_list if c.args]
+assert any(600 <= m[0] <= 660 and 400 <= m[1] <= 420 for m in moves), \
+    f"W+клик должен попасть в строку цели (620,410), got {moves}"
+print("15c) нет иконки Orbit -> орбита через W + клик по строке овервью")
+
+# 15d: в бою орбита слетела -> включается заново вокруг атакуемой цели
+t_orb = {'name': '4GQ-XQ - Rat Battleship', 'distance': 8000.0, 'is_active': True,
+         'x': 100, 'y': 100}
+bot._combat_step = 'ATTACK'
+state.targets = [t_orb]
+state.active_target = t_orb
+state.high_slots = [{'name': 'inFlightHighSlot1', 'active': True}]
+state.drones_in_bay = 0
+state.drones_in_space = 0
+state.drones_under_attack = False
+state.selected_item = {'name': 'Rat Battleship', 'distance': 8000.0, 'actions': []}
+state.is_orbiting = False
+# Две строки овервью: повторная орбита должна попасть в строку АТАКУЕМОЙ
+# цели (Rat Battleship @ 700,450), а не в строку ранее выбранного фрегата
+state.overview_entries = [
+    {'name': 'Rat Frigate', 'distance': 12000.0, 'type': '', 'x': 620, 'y': 410,
+     'icon': '', 'npc_class': 'FRIGATE'},
+    {'name': 'Rat Battleship', 'distance': 8000.0, 'type': '', 'x': 700, 'y': 450,
+     'icon': '', 'npc_class': 'BATTLESHIP'},
+]
+bot._last_lock_action_ts = time.monotonic()        # focus fire не кликает
+bot._last_orbit_fix_ts = time.monotonic() - 60.0   # кулдаун перепроверки прошёл
+reset_mock()
+bot.think(state, use_drones=True)
+assert 'w' in pressed_keys(), "орбита слетела — надо включить заново (W)"
+moves = [c.args for c in pag.moveTo.call_args_list if c.args]
+assert any(680 <= m[0] <= 740 and 440 <= m[1] <= 460 for m in moves), \
+    f"повторная орбита должна быть вокруг атакуемой цели (700,450), got {moves}"
+print("15d) is_orbiting=False в бою -> орбита включена заново вокруг атакуемой цели")
+
+# 15e: орбита активна -> повторных команд орбиты нет
+state.is_orbiting = True
+reset_mock()
+bot.think(state, use_drones=True)
+assert 'w' not in pressed_keys(), "орбита активна — повторное включение не нужно"
+assert not pag.moveTo.call_args_list, "при активной орбите кликов по овервью быть не должно"
+print("15e) is_orbiting=True -> орбиту не трогаем")
+
+# 15f: кулдаун перепроверки: сразу после захвата орбита не дублируется
+state.is_orbiting = False
+bot._last_orbit_fix_ts = time.monotonic()   # только что вошли в ATTACK
+reset_mock()
+bot.think(state, use_drones=True)
+assert 'w' not in pressed_keys(), "в пределах кулдауна команду орбиты не повторяем"
+print("15f) кулдаун после захвата цели -> дубль команды орбиты не уходит")
+
+# ===== 16. МОДУЛИ: РЕПКА И ДВИГАТЕЛЬ ВСЕГДА ВКЛЮЧЕНЫ =====
+print("\n--- 16. Контроль модулей (репка + двигатель) ---")
+
+# 16a: парсер распознаёт двигатель и репку по иконкам
+p16 = EveParserNew()
+st16 = ParsedUIState()
+st16.high_slots = []
+st16.medium_slots = [{'name': 'inFlightMediumSlot1', 'active': False,
+                      'icon': 'res:/ui/texture/icons/3_64_2.png',
+                      'x': 1170, 'y': 970, 'w': 48, 'h': 48}]
+st16.low_slots = [{'name': 'inFlightLowSlot1', 'active': False,
+                   'icon': 'res:/ui/texture/icons/1_64_11.png',
+                   'x': 1170, 'y': 1020, 'w': 48, 'h': 48}]
+p16._finalize_state(st16)
+assert st16.prop_modules == {'inFlightMediumSlot1': 'READY'}, st16.prop_modules
+assert st16.repairers == {'inFlightLowSlot1': 'READY'}, st16.repairers
+print("16a) иконки: двигатель=medium 3_64_2, репка=low 1_64_11 -> распознаны")
+
+# 16b: в доке контроля модулей нет
+st16.is_docked = True
+bot._module_click_ts.clear()
+reset_mock()
+bot.think(st16, use_drones=True)
+assert not pag.moveTo.call_args_list, "в доке модули не кликаем"
+assert not pag.click.call_args_list, "в доке модули не кликаем"
+print("16b) is_docked=True -> контроль модулей пропущен")
+
+# 16c: после андока — репка включается кликом по иконке (первый тик)
+st16.is_docked = False
+st16.is_warp = False
+bot._combat_step = 'IDLE'
+reset_mock()
+bot.think(st16, use_drones=True)
+moves = [c.args for c in pag.moveTo.call_args_list if c.args]
+assert any(1170 <= m[0] <= 1205 and 1015 <= m[1] <= 1028 for m in moves), \
+    f"репка READY -> клик по её иконке (1170,1020), got {moves}"
+assert not any(960 <= m[1] <= 980 for m in moves), "двигатель включается на следующем тике"
+print("16c) репка READY -> клик по иконке репки")
+
+# 16d: следующий тик — двигатель (репка в кулдауне, дубля нет)
+reset_mock()
+bot.think(st16, use_drones=True)
+moves = [c.args for c in pag.moveTo.call_args_list if c.args]
+assert any(1170 <= m[0] <= 1205 and 965 <= m[1] <= 978 for m in moves), \
+    f"двигатель READY -> клик по его иконке (1170,970), got {moves}"
+assert not any(1010 <= m[1] <= 1030 for m in moves), \
+    "репку нельзя кликать повторно в кулдауне (выключится)"
+print("16d) двигатель READY -> клик по иконке двигателя, репка в кулдауне")
+
+# 16e: в варпе репка включается, двигатель — нет (в варпе бесполезен)
+st16.is_warp = True
+bot._module_click_ts.clear()
+reset_mock()
+bot.think(st16, use_drones=True)
+moves = [c.args for c in pag.moveTo.call_args_list if c.args]
+assert any(1010 <= m[1] <= 1030 for m in moves), "репку включаем и в варпе"
+assert not any(960 <= m[1] <= 980 for m in moves), "двигатель в варпе не включаем"
+print("16e) is_warp=True -> репка кликается, двигатель нет")
+
+# 16f: всё активно -> кликов нет
+st16.is_warp = False
+st16.repairers = {'inFlightLowSlot1': 'ACTIVE'}
+st16.prop_modules = {'inFlightMediumSlot1': 'ACTIVE'}
+bot._module_click_ts.clear()
+reset_mock()
+bot.think(st16, use_drones=True)
+assert not pag.moveTo.call_args_list, "активные модули кликов не требуют"
+print("16f) модули ACTIVE -> контроля кликов нет")
 
 print("\nALL BOT INTEGRATION ASSERTIONS PASSED")

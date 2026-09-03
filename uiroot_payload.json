@@ -1,0 +1,385 @@
+{
+  "meta": {
+    "schema_version": 1,
+    "timestamp": 1788463115.19,
+    "datetime": "2026-09-03 22:18:35",
+    "window": {
+      "width": 1497,
+      "height": 1001
+    },
+    "ui_root_address": "0x22AAE57D358",
+    "is_loading": false,
+    "fps": 0
+  },
+  "system": {
+    "current_system": "",
+    "security_status": 0.0,
+    "nearest_location": "",
+    "sovereignty_holder": "",
+    "route_destination": "",
+    "bounty_risk": 0.0
+  },
+  "ship": {
+    "hp": {
+      "shield_pct": 100.0,
+      "armor_pct": 100.0,
+      "structure_pct": 100.0,
+      "capacitor_pct": 100.0
+    },
+    "speed_mps": 0.0,
+    "movement": {
+      "is_warp": false,
+      "is_establishing": false,
+      "is_orbiting": false,
+      "is_docked": false,
+      "state": "STATIONARY"
+    },
+    "is_pvp": false
+  },
+  "modules": {
+    "status": {
+      "inFlightHighSlot1": "READY",
+      "inFlightHighSlot2": "READY",
+      "inFlightMediumSlot1": "READY"
+    },
+    "repairers": {},
+    "prop_modules": {
+      "inFlightMediumSlot1": "READY"
+    },
+    "high_slots": [
+      {
+        "name": "inFlightHighSlot1",
+        "active": false,
+        "icon": "res:/ui/texture/icons/13_64_5.png",
+        "x": 902,
+        "y": 856,
+        "w": 48,
+        "h": 48
+      },
+      {
+        "name": "inFlightHighSlot2",
+        "active": false,
+        "icon": "res:/ui/texture/icons/12_64_8.png",
+        "x": 953,
+        "y": 856,
+        "w": 48,
+        "h": 48
+      }
+    ],
+    "medium_slots": [
+      {
+        "name": "inFlightMediumSlot1",
+        "active": false,
+        "icon": "res:/ui/texture/icons/3_64_2.png",
+        "x": 927,
+        "y": 900,
+        "w": 48,
+        "h": 48
+      }
+    ],
+    "low_slots": []
+  },
+  "drones": {
+    "in_bay": 0,
+    "in_space": 0,
+    "max": 0,
+    "idle": false,
+    "fighting": false,
+    "returning": false,
+    "under_attack": false,
+    "entries": []
+  },
+  "targets": {
+    "count": 0,
+    "active": null,
+    "locked": []
+  },
+  "npc": {
+    "count": 0,
+    "all": [],
+    "frigates": [],
+    "cruisers": [],
+    "battlecruisers": [],
+    "battleships": []
+  },
+  "local_chat": {
+    "player_count": 0,
+    "has_neutral": false,
+    "has_hostile": false,
+    "threat": "SAFE",
+    "players": []
+  },
+  "overview": [
+    {
+      "name": "14,1 AU",
+      "distance": 0.0,
+      "type": "stargate",
+      "x": 1038,
+      "y": 362,
+      "icon": "res:/UI/Texture/Shared/Brackets/stargate.png"
+    },
+    {
+      "name": "11,4 AU",
+      "distance": 0.0,
+      "type": "stargate",
+      "x": 1038,
+      "y": 338,
+      "icon": "res:/UI/Texture/Shared/Brackets/stargate.png"
+    },
+    {
+      "name": "15,6 AU",
+      "distance": 0.0,
+      "type": "",
+      "x": 1038,
+      "y": 386,
+      "icon": "res:/UI/Texture/Shared/Brackets/beacon.png"
+    },
+    {
+      "name": "3,6 AU",
+      "distance": 0.0,
+      "type": "",
+      "x": 1038,
+      "y": 314,
+      "icon": "res:/UI/Texture/Shared/Brackets/beacon.png"
+    },
+    {
+      "name": "WAC-HW - This is totally WAC",
+      "distance": 0.0,
+      "type": "citadel",
+      "x": 1038,
+      "y": 242,
+      "icon": "res:/UI/Texture/Shared/Brackets/citadelMedium.png"
+    },
+    {
+      "name": "2,2 AU",
+      "distance": 0.0,
+      "type": "",
+      "x": 1038,
+      "y": 290,
+      "icon": "res:/UI/Texture/eveicon/bracket_icons/sov_hub_bracket_16px.png"
+    },
+    {
+      "name": "2,2 AU",
+      "distance": 0.0,
+      "type": "",
+      "x": 1038,
+      "y": 266,
+      "icon": "res:/UI/Texture/Shared/Brackets/sun.png"
+    }
+  ],
+  "selected_item": {
+    "name": "WAC-HW - This is totally WAC",
+    "distance": 0.0,
+    "is_target": false,
+    "icon": "res:/dx9/model/deployables/generic/citadel/m/cm1/icons/21137_64.png",
+    "x": 1016,
+    "y": 0,
+    "w": 481,
+    "h": 140,
+    "actions": [
+      {
+        "name": "selectedItemApproach",
+        "action": "Approach",
+        "x": 1026,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/approach_32px.png"
+      },
+      {
+        "name": "selectedItemWarpTo",
+        "action": "Warp To",
+        "x": 1062,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/warp_to_32px.png"
+      },
+      {
+        "name": "selectedItemDock",
+        "action": "Dock",
+        "x": 1098,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/dock_32px.png"
+      },
+      {
+        "name": "selectedItemAccessDropbox",
+        "action": "Access Dropbox",
+        "x": 1134,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/open_cargo_32px.png"
+      },
+      {
+        "name": "selectedItemOrbit",
+        "action": "Orbit",
+        "x": 1170,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/orbit_32px.png"
+      },
+      {
+        "name": "selectedItemKeepAtRange",
+        "action": "Keep at Range",
+        "x": 1206,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/keep_at_distance_32px.png"
+      },
+      {
+        "name": "selectedItemLockTarget",
+        "action": "Lock Target",
+        "x": 1242,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/target_32px.png"
+      },
+      {
+        "name": "selectedItemLookAt",
+        "action": "Look At",
+        "x": 1278,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/look_at_32px.png"
+      },
+      {
+        "name": "selectedItemSetInterest",
+        "action": "Set Interest",
+        "x": 1314,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/camera_track_32px.png"
+      },
+      {
+        "name": "selectedItemShowInfo",
+        "action": "Show Info",
+        "x": 1350,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/show_info_32px.png"
+      }
+    ]
+  },
+  "scanner": [
+    {
+      "id": "BPN-552",
+      "name": "Sansha Hidden Rally Point",
+      "group": "Combat Site",
+      "distance": 1790686512279.0,
+      "signal": 0.0,
+      "type": "combat",
+      "x": 533,
+      "y": 82,
+      "h": 20
+    }
+  ],
+  "context_menu": {
+    "open": false,
+    "type": "",
+    "items": []
+  },
+  "asteroid_belts": [],
+  "neocom": {
+    "buttons": [
+      {
+        "name": "mail",
+        "has_notification": true,
+        "notification_count": 0
+      },
+      {
+        "name": "market",
+        "has_notification": false,
+        "notification_count": 0
+      },
+      {
+        "name": "fitting",
+        "has_notification": false,
+        "notification_count": 0
+      },
+      {
+        "name": "fleet",
+        "has_notification": false,
+        "notification_count": 0
+      },
+      {
+        "name": "chat",
+        "has_notification": true,
+        "notification_count": 0
+      },
+      {
+        "name": "assets",
+        "has_notification": false,
+        "notification_count": 0
+      },
+      {
+        "name": "inventory",
+        "has_notification": false,
+        "notification_count": 0
+      },
+      {
+        "name": "wallet",
+        "has_notification": false,
+        "notification_count": 0
+      },
+      {
+        "name": "uicontrols.Window",
+        "has_notification": true,
+        "notification_count": 0
+      },
+      {
+        "name": "uicontrols.Window",
+        "has_notification": true,
+        "notification_count": 0
+      }
+    ],
+    "clock": "18:57"
+  },
+  "executor": {
+    "combat_mode": "IDLE",
+    "threat_level": 0,
+    "recommended_action": "IDLE",
+    "lock_candidates": [],
+    "recall_drones": false,
+    "activate_repairer": null,
+    "reason": "no threats and no targets"
+  },
+  "nn_features": {
+    "hp_shield": 1.0,
+    "hp_armor": 1.0,
+    "hp_structure": 1.0,
+    "hp_capacitor": 1.0,
+    "speed_mps": 0.0,
+    "is_warp": 0,
+    "is_establishing": 0,
+    "is_orbiting": 0,
+    "is_docked": 0,
+    "drones_in_bay": 0,
+    "drones_in_space": 0,
+    "drones_max": 0,
+    "drones_idle": 0,
+    "drones_fighting": 0,
+    "drones_returning": 0,
+    "drones_under_attack": 0,
+    "targets_locked": 0,
+    "npc_total": 0,
+    "npc_frigates": 0,
+    "npc_cruisers": 0,
+    "npc_battlecruisers": 0,
+    "npc_battleships": 0,
+    "local_players": 0,
+    "local_has_neutral": 0,
+    "local_has_hostile": 0,
+    "menu_open": 0,
+    "threat_level": 0
+  },
+  "debug_overlay": []
+}

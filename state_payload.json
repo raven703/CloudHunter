@@ -1,8 +1,8 @@
 {
   "meta": {
     "schema_version": 1,
-    "timestamp": 1788459793.386,
-    "datetime": "2026-09-03 21:23:13",
+    "timestamp": 1788464448.104,
+    "datetime": "2026-09-03 22:40:48",
     "window": {
       "width": 1497,
       "height": 1001
@@ -24,15 +24,15 @@
       "shield_pct": 100.0,
       "armor_pct": 100.0,
       "structure_pct": 100.0,
-      "capacitor_pct": 100.0
+      "capacitor_pct": 98.6
     },
-    "speed_mps": 0.6,
+    "speed_mps": 0.0,
     "movement": {
-      "is_warp": false,
+      "is_warp": true,
       "is_establishing": false,
       "is_orbiting": false,
       "is_docked": false,
-      "state": "MOVING"
+      "state": "WARP"
     },
     "is_pvp": false
   },
@@ -43,23 +43,38 @@
       "inFlightMediumSlot1": "READY"
     },
     "repairers": {},
+    "prop_modules": {
+      "inFlightMediumSlot1": "READY"
+    },
     "high_slots": [
       {
         "name": "inFlightHighSlot1",
         "active": false,
-        "icon": "res:/ui/texture/icons/13_64_5.png"
+        "icon": "res:/ui/texture/icons/13_64_5.png",
+        "x": 902,
+        "y": 856,
+        "w": 48,
+        "h": 48
       },
       {
         "name": "inFlightHighSlot2",
         "active": false,
-        "icon": "res:/ui/texture/icons/12_64_8.png"
+        "icon": "res:/ui/texture/icons/12_64_8.png",
+        "x": 953,
+        "y": 856,
+        "w": 48,
+        "h": 48
       }
     ],
     "medium_slots": [
       {
         "name": "inFlightMediumSlot1",
         "active": false,
-        "icon": "res:/ui/texture/icons/3_64_2.png"
+        "icon": "res:/ui/texture/icons/3_64_2.png",
+        "x": 927,
+        "y": 900,
+        "w": 48,
+        "h": 48
       }
     ],
     "low_slots": []
@@ -80,12 +95,87 @@
     "locked": []
   },
   "npc": {
-    "count": 0,
-    "all": [],
+    "count": 9,
+    "all": [
+      {
+        "x": 1038,
+        "y": 266
+      },
+      {
+        "x": 1038,
+        "y": 242
+      },
+      {
+        "x": 1038,
+        "y": 338
+      },
+      {
+        "x": 1038,
+        "y": 290
+      },
+      {
+        "x": 1038,
+        "y": 386
+      },
+      {
+        "x": 1038,
+        "y": 410
+      },
+      {
+        "x": 1038,
+        "y": 314
+      },
+      {
+        "x": 1038,
+        "y": 362
+      },
+      {
+        "x": 1038,
+        "y": 434
+      }
+    ],
     "frigates": [],
-    "cruisers": [],
+    "cruisers": [
+      {
+        "x": 1038,
+        "y": 242
+      },
+      {
+        "x": 1038,
+        "y": 386
+      },
+      {
+        "x": 1038,
+        "y": 410
+      },
+      {
+        "x": 1038,
+        "y": 314
+      },
+      {
+        "x": 1038,
+        "y": 362
+      },
+      {
+        "x": 1038,
+        "y": 434
+      }
+    ],
     "battlecruisers": [],
-    "battleships": []
+    "battleships": [
+      {
+        "x": 1038,
+        "y": 266
+      },
+      {
+        "x": 1038,
+        "y": 338
+      },
+      {
+        "x": 1038,
+        "y": 290
+      }
+    ]
   },
   "local_chat": {
     "player_count": 0,
@@ -94,14 +184,235 @@
     "threat": "SAFE",
     "players": []
   },
-  "overview": [],
-  "selected_item": null,
+  "overview": [
+    {
+      "name": "7,9 AU",
+      "distance": 0.0,
+      "type": "stargate",
+      "x": 1038,
+      "y": 482,
+      "icon": "res:/UI/Texture/Shared/Brackets/stargate.png"
+    },
+    {
+      "name": "2,1 AU",
+      "distance": 0.0,
+      "type": "stargate",
+      "x": 1038,
+      "y": 458,
+      "icon": "res:/UI/Texture/Shared/Brackets/stargate.png"
+    },
+    {
+      "name": "9,2 AU",
+      "distance": 0.0,
+      "type": "",
+      "x": 1038,
+      "y": 506,
+      "icon": "res:/UI/Texture/Shared/Brackets/beacon.png"
+    },
+    {
+      "name": "11,0 AU",
+      "distance": 0.0,
+      "type": "",
+      "x": 1038,
+      "y": 578,
+      "icon": "res:/UI/Texture/Shared/Brackets/beacon.png"
+    },
+    {
+      "name": "12,0 AU",
+      "distance": 0.0,
+      "type": "citadel",
+      "x": 1038,
+      "y": 602,
+      "icon": "res:/UI/Texture/Shared/Brackets/citadelMedium.png"
+    },
+    {
+      "name": "10,8 AU",
+      "distance": 0.0,
+      "type": "",
+      "x": 1038,
+      "y": 530,
+      "icon": "res:/UI/Texture/eveicon/bracket_icons/sov_hub_bracket_16px.png"
+    },
+    {
+      "name": "10,9 AU",
+      "distance": 0.0,
+      "type": "",
+      "x": 1038,
+      "y": 554,
+      "icon": "res:/UI/Texture/Shared/Brackets/sun.png"
+    },
+    {
+      "name": "Centus Tyrant",
+      "distance": 7956000.0,
+      "type": "",
+      "x": 1038,
+      "y": 266,
+      "icon": "res:/UI/Texture/Shared/Brackets/npcbattleship_16.png",
+      "npc_class": "BATTLESHIP"
+    },
+    {
+      "name": "177",
+      "distance": 7953000.0,
+      "type": "",
+      "x": 1038,
+      "y": 242,
+      "icon": "res:/UI/Texture/Shared/Brackets/npccruiser_16.png",
+      "npc_class": "CRUISER"
+    },
+    {
+      "name": "Centus Dread Lord",
+      "distance": 7961000.0,
+      "type": "",
+      "x": 1038,
+      "y": 338,
+      "icon": "res:/UI/Texture/Shared/Brackets/npcbattleship_16.png",
+      "npc_class": "BATTLESHIP"
+    },
+    {
+      "name": "Centus Dread Lord",
+      "distance": 7957000.0,
+      "type": "",
+      "x": 1038,
+      "y": 290,
+      "icon": "res:/UI/Texture/Shared/Brackets/npcbattleship_16.png",
+      "npc_class": "BATTLESHIP"
+    },
+    {
+      "name": "172",
+      "distance": 7970000.0,
+      "type": "",
+      "x": 1038,
+      "y": 386,
+      "icon": "res:/UI/Texture/Shared/Brackets/npccruiser_16.png",
+      "npc_class": "CRUISER"
+    },
+    {
+      "name": "175",
+      "distance": 7970000.0,
+      "type": "",
+      "x": 1038,
+      "y": 410,
+      "icon": "res:/UI/Texture/Shared/Brackets/npccruiser_16.png",
+      "npc_class": "CRUISER"
+    },
+    {
+      "name": "177",
+      "distance": 7957000.0,
+      "type": "",
+      "x": 1038,
+      "y": 314,
+      "icon": "res:/UI/Texture/Shared/Brackets/npccruiser_16.png",
+      "npc_class": "CRUISER"
+    },
+    {
+      "name": "177",
+      "distance": 7964000.0,
+      "type": "",
+      "x": 1038,
+      "y": 362,
+      "icon": "res:/UI/Texture/Shared/Brackets/npccruiser_16.png",
+      "npc_class": "CRUISER"
+    },
+    {
+      "name": "177",
+      "distance": 7975000.0,
+      "type": "",
+      "x": 1038,
+      "y": 434,
+      "icon": "res:/UI/Texture/Shared/Brackets/npccruiser_16.png",
+      "npc_class": "CRUISER"
+    }
+  ],
+  "selected_item": {
+    "name": "Centus Tyrant",
+    "distance": 3766000.0,
+    "is_target": false,
+    "icon": "res:/dx9/model/ship/sansha/battleship/sb1/icons/2295_64.png",
+    "x": 1016,
+    "y": 0,
+    "w": 481,
+    "h": 140,
+    "actions": [
+      {
+        "name": "selectedItemApproach",
+        "action": "Approach",
+        "x": 1026,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/approach_32px.png"
+      },
+      {
+        "name": "selectedItemWarpTo",
+        "action": "Warp To",
+        "x": 1062,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/warp_to_32px.png"
+      },
+      {
+        "name": "selectedItemOrbit",
+        "action": "Orbit",
+        "x": 1098,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/orbit_32px.png"
+      },
+      {
+        "name": "selectedItemKeepAtRange",
+        "action": "Keep at Range",
+        "x": 1134,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/keep_at_distance_32px.png"
+      },
+      {
+        "name": "selectedItemLockTarget",
+        "action": "Lock Target",
+        "x": 1170,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/target_32px.png"
+      },
+      {
+        "name": "selectedItemLookAt",
+        "action": "Look At",
+        "x": 1206,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/look_at_32px.png"
+      },
+      {
+        "name": "selectedItemSetInterest",
+        "action": "Set Interest",
+        "x": 1242,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/camera_track_32px.png"
+      },
+      {
+        "name": "selectedItemShowInfo",
+        "action": "Show Info",
+        "x": 1278,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/show_info_32px.png"
+      }
+    ]
+  },
   "scanner": [
     {
       "id": "BPN-552",
       "name": "Sansha Hidden Rally Point",
       "group": "Combat Site",
-      "distance": 1790686512279.0,
+      "distance": 76000.0,
       "signal": 0.0,
       "type": "combat",
       "x": 533,
@@ -119,7 +430,7 @@
     "buttons": [
       {
         "name": "mail",
-        "has_notification": true,
+        "has_notification": false,
         "notification_count": 0
       },
       {
@@ -168,24 +479,37 @@
         "notification_count": 0
       }
     ],
-    "clock": "18:23"
+    "clock": "19:40"
   },
   "executor": {
-    "combat_mode": "IDLE",
+    "combat_mode": "GUNS",
     "threat_level": 0,
-    "recommended_action": "IDLE",
-    "lock_candidates": [],
+    "recommended_action": "ENGAGE_TARGETS",
+    "lock_candidates": [
+      {
+        "x": 1038,
+        "y": 266
+      },
+      {
+        "x": 1038,
+        "y": 242
+      },
+      {
+        "x": 1038,
+        "y": 338
+      }
+    ],
     "recall_drones": false,
     "activate_repairer": null,
-    "reason": "no threats and no targets"
+    "reason": "9 npc on overview"
   },
   "nn_features": {
     "hp_shield": 1.0,
     "hp_armor": 1.0,
     "hp_structure": 1.0,
-    "hp_capacitor": 1.0,
-    "speed_mps": 0.6,
-    "is_warp": 0,
+    "hp_capacitor": 0.9861,
+    "speed_mps": 0.0,
+    "is_warp": 1,
     "is_establishing": 0,
     "is_orbiting": 0,
     "is_docked": 0,
@@ -197,16 +521,114 @@
     "drones_returning": 0,
     "drones_under_attack": 0,
     "targets_locked": 0,
-    "npc_total": 0,
+    "npc_total": 9,
     "npc_frigates": 0,
-    "npc_cruisers": 0,
+    "npc_cruisers": 6,
     "npc_battlecruisers": 0,
-    "npc_battleships": 0,
+    "npc_battleships": 3,
     "local_players": 0,
     "local_has_neutral": 0,
     "local_has_hostile": 0,
     "menu_open": 0,
     "threat_level": 0
   },
-  "debug_overlay": []
-}
+  "debug_overlay": [
+    {
+      "rect": [
+        1029,
+        258,
+        18,
+        16
+      ],
+      "color": "#ff3333",
+      "label": "BATTLESHIP",
+      "priority": 15
+    },
+    {
+      "rect": [
+        1029,
+        234,
+        18,
+        16
+      ],
+      "color": "#ff3333",
+      "label": "CRUISER",
+      "priority": 15
+    },
+    {
+      "rect": [
+        1029,
+        330,
+        18,
+        16
+      ],
+      "color": "#ff3333",
+      "label": "BATTLESHIP",
+      "priority": 15
+    },
+    {
+      "rect": [
+        1029,
+        282,
+        18,
+        16
+      ],
+      "color": "#ff3333",
+      "label": "BATTLESHIP",
+      "priority": 15
+    },
+    {
+      "rect": [
+        1029,
+        378,
+        18,
+        16
+      ],
+      "color": "#ff3333",
+      "label": "CRUISER",
+      "priority": 15
+    },
+    {
+      "rect": [
+        1029,
+        402,
+        18,
+        16
+      ],
+      "color": "#ff3333",
+      "label": "CRUISER",
+      "priority": 15
+    },
+    {
+      "rect": [
+        1029,
+        306,
+        18,
+        16
+      ],
+      "color": "#ff3333",
+      "label": "CRUISER",
+      "priority": 15
+    },
+    {
+      "rect": [
+        1029,
+        354,
+        18,
+        16
+      ],
+      "color": "#ff3333",
+      "label": "CRUISER",
+      "priority": 15
+    },
+    {
+      "rect": [
+        1029,
+        426,
+        18,
+        16
+      ],
+      "color": "#ff3333",
+      "label": "CRUISER",
+      "priority": 15
+  

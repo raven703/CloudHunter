@@ -24,7 +24,6 @@ class EveBot:
             'orbit_wait': 2.5,             # пауза после команды орбиты до попытки лока, сек
             'lock_timeout': 8.0,           # ждать появления цели в панели лока, сек
             'lock_max_attempts': 3,        # неудачных попыток лока -> следующая цель
-            'approach_time': 10.0,         # длительность сближения перед повторным локом, сек
             # --- бой: атака ---
             'auto_attack': True,           # поддерживать цикл оружия (пушки/ракеты)
             'attack_cooldown': 4.0,        # мин. пауза между нажатиями хоткеев оружия, сек
@@ -45,14 +44,16 @@ class EveBot:
             'submenu_settle': 1.0,              # пауза после появления подменю до клика по дистанции, сек
             'arrival_settle_time': 15.0,        # пауза после варпа (овервью прогружается), сек
             'modal_enter_attempts': 2,          # сколько раз жать Enter у модалки Information, прежде чем кликать Close
+            'orbit_recheck_cooldown': 6.0,      # как часто в бою перепроверять орбиту (сек), чтобы не задваивать команду
         }
 
         # --- Микро-FSM дронов: FIGHTING | RECALLING | COOLDOWN ---
         self._drone_phase = 'FIGHTING'
         self._drone_cooldown_until = 0.0
 
-        # --- FSM цели в бою: IDLE|SELECT|ORBIT|LOCK|APPROACH|ATTACK ---
-        # Цикл: выбор цели из овервью -> орбита -> захват в лок -> атака до уничтожения.
+        # --- FSM цели в бою: IDLE|SELECT|ORBIT|LOCK|ATTACK ---
+        # Цикл: выбор цели из овервью -> орбита -> захват в лок -> атака.
+        # Approach не используется: сближение только орбитой вокруг цели.
         self._combat_step = 'IDLE'
         self._step_ts = 0.0
         self._lock_attempts = 0
@@ -60,6 +61,8 @@ class EveBot:
         self._skip_coords = {}           # координаты целей, не поддающихся локу -> ts
         self._last_attack_press = 0.0
         self._recent_keys = {}           # защита от двойного нажатия (выключит модуль)
+        self._last_orbit_fix_ts = 0.0    # последнее повторное включение орбиты (контроль в бою)
+        self._module_click_ts = {}       # слот -> ts последнего клика по модулю HUD (анти-даблклик)
 
         # --- Модальное окно Information (всплывает после варпа): закрытие Enter -> клик Close ---
         self._modal_attempts = 0
@@ -198,8 +201,11 @@ class EveBot:
             self.stats['sites_cleared'] += 1
             print(f"[Stats] Сайт зачищен (всего: {self.stats['sites_cleared']})")
         
-        # 1. ПРИОРИТЕТ: ВЫЖИВАНИЕ (Репка по горячей клавише)
-        self._check_and_repair()
+        # 1. ПРИОРИТЕТ: КРИТИЧНЫЕ МОДУЛИ (репка и двигатель — кликом по иконке).
+        #    Контроль в любом состоянии (после андока, перед варпом, в варпе,
+        #    в бою) — кроме дока и экрана загрузки.
+        off_x, off_y = self._get_offset()
+        self._ensure_modules_on(state, off_x, off_y, time.monotonic())
 
         # 2. ПРИОРИТЕТ: БЕЗОПАСНОСТЬ
         if state.local_has_hostile or state.local_has_neutral:
@@ -210,12 +216,19 @@ class EveBot:
         # 3. БОЕВАЯ ЛОГИКА
         if state.npc_all:
             self.no_targets_timer = None
+            state.combat_mode_active = "COMBAT"
+            # NPC уже видны в овервью, но корабль ещё в варпе: захват цели
+            # начинаем ТОЛЬКО после смены статуса (выхода из варпа)
+            if state.is_warp:
+                self._vlog_throttled('c_warpwait',
+                                     "combat: NPC в овервью, но статус WARP — "
+                                     "жду выхода из варпа")
+                return
             # Мы прибыли на аномалию — фиксируем визит и начинаем бой
             if self._current_anom:
                 self._visited_anoms[self._current_anom] = time.time()
                 print(f"[Mission] Прибыли на '{self._current_anom}' — начинаю бой")
                 self._reset_mission()
-            state.combat_mode_active = "COMBAT"
             self._combat_logic()
         else:
             # Целей нет — проверяем, нужно ли возвращать дронов
@@ -229,17 +242,72 @@ class EveBot:
             # Миссия: выбрать аномалию из probe scanner и варпнуться на неё
             self._find_new_anomaly(state)
 
-    def _check_and_repair(self):
-        """Включаем репку горячей клавишей, если она выключена"""
-        # Если в словаре repairers есть хотя бы одна репка в статусе READY
-        for name, status in self.current_state.repairers.items():
-            if status == "READY":
-                print(f"[Bot] Репка {name} выключена. Нажимаю F1")
-                self._press_key_once('f1', time.monotonic())
-                time.sleep(3)
-                # Делаем break, чтобы не спамить всеми кнопками сразу, 
-                # если репок несколько — включим следующую на следующем тике.
-                break 
+    def _ensure_modules_on(self, state, off_x, off_y, now):
+        """Контроль критичных модулей: репка и двигатель (afterburner/MWD).
+
+        Запускается на каждом тике в любом состоянии (после андока, перед
+        варпом в аномалию, в варпе, в бою), КРОМЕ дока и экрана загрузки
+        (там HUD-модулей нет). Репка держится включённой и в варпе (циклит),
+        двигатель — только вне варпа: в варпе он бесполезен, EVE сама
+        выключает его на входе в варп, включим после выхода.
+
+        Модуль включается КЛИКОМ по его иконке в HUD: у средних и нижних
+        слотов нет дефолтных хоткеев (F1..F8 только у высоких). Повторный
+        клик защищён кулдауном — повторное нажатие ВЫКЛЮЧАЕТ модуль.
+        """
+        if getattr(state, 'is_docked', False) or getattr(state, 'is_loading', False):
+            return
+
+        # 1. Репка — всегда включена (кроме дока, работает и в варпе)
+        for name, status in (getattr(state, 'repairers', {}) or {}).items():
+            if status != 'READY':
+                continue
+            if self._toggle_hud_module(state, name, off_x, off_y, now):
+                print(f"[Bot] Репка {name} выключена — включаю (клик по иконке)")
+                return   # один модуль за тик, остальное — на следующих тиках
+
+        # 2. Двигатель (afterburner/MWD) — всегда включён вне варпа
+        if getattr(state, 'is_warp', False):
+            return
+        for name, status in (getattr(state, 'prop_modules', {}) or {}).items():
+            if status != 'READY':
+                continue
+            if self._toggle_hud_module(state, name, off_x, off_y, now):
+                print(f"[Bot] Двигатель {name} выключен — включаю (клик по иконке)")
+                return
+
+    def _toggle_hud_module(self, state, slot_name, off_x, off_y, now):
+        """Клик по иконке модуля в HUD по имени слота. True = клик сделан.
+
+        Защита от двойного клика: повторный клик в пределах кулдауна не
+        делается (иначе выключим только что включённый модуль — статус в
+        дампе обновляется с задержкой).
+        """
+        last = self._module_click_ts.get(slot_name, 0.0)
+        if now - last < self.cfg['key_repress_cooldown']:
+            self._vlog(f"modules: {slot_name} — жду кулдаун клика")
+            return False
+        slot = self._find_slot_info(state, slot_name)
+        if not slot or slot.get('x') is None:
+            self._vlog_throttled(f"mcoord_{slot_name}",
+                                 f"modules: {slot_name} — нет координат иконки в HUD")
+            return False
+        self._module_click_ts[slot_name] = now
+        cx = (slot.get('x') or 0) + off_x
+        cy = (slot.get('y') or 0) + off_y
+        self._click_at(cx, cy)
+        return True
+
+    @staticmethod
+    def _find_slot_info(state, slot_name):
+        """Слот (с координатами иконки) по имени среди high/medium/low."""
+        for slot_list in (getattr(state, 'high_slots', None),
+                          getattr(state, 'medium_slots', None),
+                          getattr(state, 'low_slots', None)):
+            for m in slot_list or []:
+                if m.get('name') == slot_name:
+                    return m
+        return None
 
     def _press_key_once(self, key, now):
         """Нажатие клавиши с защитой от двойного нажатия.
@@ -334,13 +402,66 @@ class EveBot:
               f"({len(actions)} кнопок в окне выбранного объекта)")
         return False
 
-    def _selected_distance(self, state):
-        """Дистанция до выбранного объекта (метры) из окна выбранного объекта."""
-        item = state.selected_item or {}
-        try:
-            return float(item.get('distance') or 0.0)
-        except (TypeError, ValueError):
-            return 0.0
+    def _overview_row_coords(self, state, target_name=None):
+        """Координаты строки овервью для орбиты хоткеем W+клик.
+
+        Сначала ищем строку по имени атакуемой цели (overview_entries —
+        координаты иконки строки, см. parse_overview), при неудаче берём
+        последнюю выбранную строку (_current_target_coords).
+        """
+        tname = str(target_name or '').strip().lower()
+        if tname:
+            for e in getattr(state, 'overview_entries', None) or []:
+                oname = str(e.get('name') or '').strip().lower()
+                x, y = e.get('x'), e.get('y')
+                if not oname or x is None or y is None:
+                    continue
+                if oname in tname or tname in oname:
+                    return (float(x), float(y))
+        return self._current_target_coords
+
+    def _enable_orbit(self, state, off_x, off_y, target_name=None):
+        """Включить орбиту вокруг цели.
+
+        Способы (по приоритету):
+          1) иконка Orbit в окне выбранного объекта (клик курсором);
+          2) хоткей W + клик по строке цели в овервью (W+LMB) — если иконки
+             нет (окно выбранного объекта не распарсилось / кнопки нет).
+        Цель: атакуемая (target_name) либо последняя выбранная строка.
+        """
+        if self._click_action(state, 'orbit', off_x, off_y):
+            return True
+        row = self._overview_row_coords(state, target_name)
+        if not row:
+            print("[Combat] Орбиту включить нечем: нет иконки Orbit и координат цели")
+            return False
+        print(f"[Combat] Орбита через хоткей W + клик по строке овервью "
+              f"({row[0]:.0f},{row[1]:.0f}) '{target_name or '?'}'")
+        pyautogui.press('w')
+        time.sleep(random.uniform(0.15, 0.35))
+        self._click_at(row[0] + off_x, row[1] + off_y)
+        return True
+
+    def _ensure_orbit_on_target(self, state, off_x, off_y, now):
+        """Контроль орбиты в бою: если орбита слетела — включить заново.
+
+        Статус орбиты берём из HUD-индикации (state.is_orbiting, текст
+        'Orbiting ...' над HUD, см. full_parser.parse_ui_root). Орбита должна
+        быть вокруг атакуемой (активной) цели. Перепроверяем не чаще
+        orbit_recheck_cooldown секунд — индикация обновляется с задержкой,
+        и повторная команда не должна уходить каждый тик.
+        """
+        if state.is_orbiting:
+            return
+        if now - self._last_orbit_fix_ts < self.cfg['orbit_recheck_cooldown']:
+            self._vlog_throttled('c_orbitwait', "combat: орбиты нет в индикации — жду перед повторным включением")
+            return
+        self._last_orbit_fix_ts = now
+        active = state.active_target or (state.targets or [{}])[0]
+        tname = str(active.get('name') or '') if isinstance(active, dict) else ''
+        print(f"[Combat] Орбита выключилась — включаю заново вокруг "
+              f"{tname or 'атакуемой цели'}")
+        self._enable_orbit(state, off_x, off_y, target_name=tname)
 
     @staticmethod
     def _fmt_dist(meters):
@@ -398,20 +519,37 @@ class EveBot:
     def _target_fsm(self, state, off_x, off_y, now):
         """Боевой цикл против NPC.
 
-        Прилёт в аномалию -> выбор цели из овервью (одиночный клик) ->
-        орбита выбранной цели (кнопка окна выбранного объекта) ->
-        попытка захвата в лок (Ctrl+клик) -> атака до уничтожения цели.
+        Пока корабль в варпе FSM заморожена: цель уже может быть видна в
+        овервью, но выбор/орбиту/лок начинаем только после выхода из варпа.
 
+        Прилёт в аномалию -> выбор цели из овервью (одиночный клик) ->
+        орбита выбранной цели (иконка Orbit, при её отсутствии хоткей
+        W + клик по строке) -> попытка захвата в лок (Ctrl+клик) ->
+        атака до уничтожения цели.
+
+        Approach НЕ используется: сближение только орбитой вокруг цели.
         Если цель вне зоны захвата (лок не сработал за lock_timeout) —
-        фиксируем в логе и сближаемся: Approach из меню действий выбранного
-        объекта, затем повторяем орбиту и попытку лока.
+        держим орбиту и повторяем лок; после lock_max_attempts неудачных
+        попыток цель исключается (_skip_coords) и берётся следующая.
+
+        В бою (ATTACK) контролируем статус орбиты: если она слетела —
+        включаем заново вокруг атакуемой цели (см. _ensure_orbit_on_target).
         """
+        # Во время варпа захват цели не начинаем
+        if state.is_warp:
+            self._vlog_throttled('fsm_warp', "combat: варп — захват цели отложен")
+            return
+
         # Цели уже захвачены — атакуем (переход из любого состояния)
         if state.targets:
             if self._combat_step != 'ATTACK':
                 self._combat_step = 'ATTACK'
                 self._lock_attempts = 0
+                # Дать индикации HUD время показать 'Orbiting ...'
+                self._last_orbit_fix_ts = now
                 print("[Combat] Цель захвачена! Атакую до уничтожения.")
+            # Контроль орбиты: слетела — включаем заново вокруг атакуемой цели
+            self._ensure_orbit_on_target(state, off_x, off_y, now)
             return
 
         if not state.npc_all:
@@ -433,8 +571,9 @@ class EveBot:
 
         elif step == 'SELECT':
             if now - self._step_ts >= self.cfg['select_wait']:
-                # 2. ОРБИТА выбранной цели (кнопка окна выбранного объекта)
-                self._click_action(state, 'orbit', off_x, off_y)
+                # 2. ОРБИТА выбранной цели (иконка Orbit, при её отсутствии
+                #    хоткей W + клик по строке овервью)
+                self._enable_orbit(state, off_x, off_y)
                 self._combat_step = 'ORBIT'
                 self._step_ts = now
 
@@ -454,22 +593,6 @@ class EveBot:
 
         elif step == 'LOCK':
             if now - self._step_ts >= self.cfg['lock_timeout']:
-                # Лок не сработал: цель вне зоны захвата — лог + сближение
-                dist = self._selected_distance(state)
-                print(f"[Combat] Цель вне зоны захвата ({self._fmt_dist(dist)}), "
-                      f"попытка {self._lock_attempts}/{self.cfg['lock_max_attempts']} — "
-                      f"сближение (Approach)")
-                self._click_action(state, 'approach', off_x, off_y)
-                self._combat_step = 'APPROACH'
-                self._step_ts = now
-            else:
-                self._vlog_throttled('c_lock', f"combat: жду лок цели ещё "
-                                               f"{self.cfg['lock_timeout'] - (now - self._step_ts):.1f} с "
-                                               f"(попытка {self._lock_attempts}/"
-                                               f"{self.cfg['lock_max_attempts']})")
-
-        elif step == 'APPROACH':
-            if now - self._step_ts >= self.cfg['approach_time']:
                 if self._lock_attempts >= self.cfg['lock_max_attempts']:
                     print("[Combat] Лок так и не сработал — исключаю цель, беру следующую")
                     if self._current_target_coords:
@@ -477,10 +600,19 @@ class EveBot:
                     self._lock_attempts = 0
                     self._combat_step = 'IDLE'   # FSM выберет следующего кандидата
                 else:
-                    # Сблизились — повторяем орбиту и сразу попытку лока
-                    self._click_action(state, 'orbit', off_x, off_y)
+                    # Approach не используем (только орбита): держим орбиту
+                    # и повторяем попытку лока
+                    print(f"[Combat] Цель вне зоны захвата, попытка "
+                          f"{self._lock_attempts}/{self.cfg['lock_max_attempts']} — "
+                          f"держу орбиту, повторяю лок")
+                    self._enable_orbit(state, off_x, off_y)
                     self._combat_step = 'ORBIT'
-                    self._step_ts = now - self.cfg['orbit_wait']
+                    self._step_ts = now
+            else:
+                self._vlog_throttled('c_lock', f"combat: жду лок цели ещё "
+                                               f"{self.cfg['lock_timeout'] - (now - self._step_ts):.1f} с "
+                                               f"(попытка {self._lock_attempts}/"
+                                               f"{self.cfg['lock_max_attempts']})")
 
     def _click_target_row(self, target, off_x, off_y):
         """Клик по строке цели в панели лока — делает её активной (фокус огня)."""

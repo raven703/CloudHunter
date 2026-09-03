@@ -462,6 +462,7 @@ class EveParserNew:
     def _finalize_state(self, state: ParsedUIState) -> None:
         """До-расчёт полей, которые full_parser не заполняет:
         - repairers: модули-ремонтники по иконке (как в старом парсере);
+        - prop_modules: двигатель (afterburner/MWD) по иконке;
         - combat_mode_active: эвристика по текущей обстановке.
         """
         # 1. Репки — определяем по иконке модуля (репер иконки как в parser.py)
@@ -475,6 +476,23 @@ class EveParserNew:
                     if slot_name:
                         repairers[slot_name] = 'ACTIVE' if m.get('active') else 'READY'
         state.repairers = repairers
+
+        # 1b. Двигатель (afterburner/MWD) — по иконке модуля.
+        #     3_64_2 — иконка доп.движения (AB/MWD) в HUD, 1_64_8 — вариант
+        #     из других скинов/клиентов. Бот держит двигатель всегда включённым.
+        prop_icons = ('3_64_2', '1_64_8')
+        prop_modules: Dict[str, str] = {}
+        for slot_list in (state.high_slots, state.medium_slots, state.low_slots):
+            for m in slot_list or []:
+                icon = str(m.get('icon') or '').lower()
+                if not icon:
+                    continue
+                if (any(p in icon for p in prop_icons)
+                        or 'afterburner' in icon or 'microwarp' in icon):
+                    slot_name = m.get('name', '')
+                    if slot_name:
+                        prop_modules[slot_name] = 'ACTIVE' if m.get('active') else 'READY'
+        state.prop_modules = prop_modules
 
         # 2. Боевой режим (отображается в окне отладки, боту не передаётся)
         if state.local_has_hostile or state.local_has_neutral:
