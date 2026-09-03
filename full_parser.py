@@ -121,6 +121,136 @@ def get_node_text(node: Dict) -> str:
     return ""
 
 
+# ==================== МОДАЛЬНЫЕ ОКНА (INFORMATION) ====================
+
+def parse_modal_info(root: Dict) -> Dict[str, Any]:
+    """Детект модального окна 'Information' (Telecom) и его кнопки Close.
+
+    EVE рисует модальные окна (например 'Information' про неевклидовы
+    аномалии/контент) как узел типа 'Telecom' (400x400) ПО ПОВЕРХ
+    остального UI. Окно блокирует дальнейший ввод — его нужно закрыть
+    (Enter или кнопка Close) до продолжения работы.
+
+    Структура (raw_dump_20260902_184332.json):
+      Telecom(name='telecom') @ (569,299,400x400)
+        -> Container('window_controls_cont')
+          -> DefaultWindowControls
+            -> WindowControls
+              -> ContainerAutoSize
+                -> WindowControlButton
+                  -> ButtonIcon('CloseButtonIcon') @ (939,305,24x24)
+        -> Container('content')
+          -> ... main ...
+          -> Container('bottom')
+            -> ButtonGroup
+              -> ButtonWrapper
+                -> Button('ok_dialog_button')
+                  -> Label('Close') @ (...)
+
+    Возвращает:
+      {
+        'open': bool,           # есть модальное окно Telecom с заголовком Information
+        'name': str,            # имя окна (из WindowCaption / иконки)
+        'x': int, 'y': int,     # координаты окна (накопленные от корня)
+        'w': int, 'h': int,     # размер окна
+        'close': None | {'x': int, 'y': int, 'w': int, 'h': int}  # кнопка Close
+      }
+    """
+    result: Dict[str, Any] = {
+        'open': False, 'name': '', 'x': 0, 'y': 0, 'w': 0, 'h': 0,
+        'close': None,
+    }
+
+    # Ищем узел 'Telecom' по ВСЕМУ дереву (модалка поверх, имя 'telecom')
+    def _find(node: Dict) -> Optional[Dict]:
+        if not isinstance(node, dict):
+            return None
+        if node.get('pythonObjectTypeName') == 'Telecom':
+            return node
+        for child in node.get('children', []) or []:
+            found = _find(child)
+            if found:
+                return found
+        return None
+
+    telecom_node = _find(root)
+    if not telecom_node:
+        return result
+
+    tc = telecom_node.get('dictEntriesOfInterest', {}) or {}
+    tx = get_val(tc.get('_displayX', 0))
+    ty = get_val(tc.get('_displayY', 0))
+    result['x'], result['y'] = tx, ty
+    result['w'] = get_val(tc.get('_displayWidth', 0))
+    result['h'] = get_val(tc.get('_displayHeight', 0))
+
+    # Ищем заголовок Information (WindowCaption -> Label _setText='Information')
+    # и кнопку Close, накапливая координаты от Telecom вниз.
+    header_text = ''  # НЕ брать имя Telecom ('telecom') — ищем именно WindowCaption
+    close_btn = None
+
+    def walk(node: Dict, px: int, py: int) -> None:
+        nonlocal header_text, close_btn
+        # Не прекращаем раньше времени: нижняя кнопка может быть глубже в дереве,
+        # чем заголовок и верхняя иконка. Ищем, пока не найдём нижнюю кнопку
+        # (предпочтительнее для пользователя) или не закончится дерево.
+        ei = node.get('dictEntriesOfInterest', {}) or {}
+        t = node.get('pythonObjectTypeName', '')
+        x = px + get_val(ei.get('_displayX', 0))
+        y = py + get_val(ei.get('_displayY', 0))
+        w = get_val(ei.get('_displayWidth', 0))
+        h = get_val(ei.get('_displayHeight', 0))
+
+        if not header_text and t == 'WindowCaption':
+            # в поддереве ищем Label с текстом (например 'Information')
+            for sub in _walk_all(node):
+                sei = sub.get('dictEntriesOfInterest', {}) or {}
+                txt = str(sei.get('_setText', '') or '')
+                if txt.strip():
+                    header_text = txt.strip()
+                    break
+
+        # Кнопка Close: либо ButtonIcon (верхняя иконка), либо Button 'ok_dialog_button' (нижняя большая)
+        # Предпочитаем нижнюю кнопку — она более заметна для пользователя
+        if t == 'ButtonIcon':
+            nm = str(ei.get('_name', ''))
+            hint = str(ei.get('_hint', ''))
+            if 'close' in nm.lower() or 'close' in hint.lower():
+                # Если уже есть нижняя кнопка — не перезаписываем
+                if close_btn is None or close_btn.get('type') != 'button':
+                    close_btn = {'x': x, 'y': y, 'w': w, 'h': h, 'type': 'icon'}
+        elif t == 'Button' and str(ei.get('_name', '')) == 'ok_dialog_button':
+            # нижняя большая кнопка "Close" — предпочитаем её (перезаписываем иконку)
+            close_btn = {'x': x, 'y': y, 'w': w, 'h': h, 'type': 'button'}
+
+        for child in node.get('children', []) or []:
+            walk(child, x, y)
+
+    walk(telecom_node, 0, 0)
+
+    result['name'] = header_text
+    # Модалка считается "открытой", только если это окно Information с заголовком
+    if 'information' in header_text.lower():
+        result['open'] = True
+        # Убираем служебное поле 'type' из close_btn перед возвратом
+        if close_btn:
+            close_btn_clean = {k: v for k, v in close_btn.items() if k != 'type'}
+            result['close'] = close_btn_clean
+    else:
+        result['open'] = False
+        result['close'] = None
+
+    return result
+
+
+def _walk_all(node):
+    """Генератор всех узлов в поддереве (dict), включая сам node."""
+    if isinstance(node, dict):
+        yield node
+        for child in node.get('children', []) or []:
+            yield from _walk_all(child)
+
+
 # ==================== ПАРСЕР КОНТЕКСТНОГО МЕНЮ ====================
 
 def parse_context_menu(root: Dict) -> Dict[str, Any]:

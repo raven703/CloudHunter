@@ -26,13 +26,23 @@ time.sleep = lambda *_: None
 
 from bot import EveBot
 from new_parser import EveParserNew
+from ParsedUIState import ParsedUIState
 
-with open("uiroot_new.json", "r", encoding="utf-8") as f:
-    data = json.load(f)
+import os
+uiroot_path = "uiroot_new.json"
+if os.path.exists(uiroot_path):
+    # Живой дамп (генерится eveui.exe во время игровой сессии)
+    with open(uiroot_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    state, draw_list = EveParserNew().parse(data)
+else:
+    # Дампа нет — синтетическое пустое состояние; секции ниже сами выставляют поля
+    state, draw_list = ParsedUIState(), []
 
-state, draw_list = EveParserNew().parse(data)
-# Репка в дампе выключена (READY) — делаем включённой, чтобы _check_and_repair не жал F1
+# Репку делаем включённой (ACTIVE), чтобы _check_and_repair не жал F1
 state.repairers = {'inFlightLowSlot3': 'ACTIVE'}
+# Секция 1: враг в локале -> аварийный выход (не зависим от содержимого дампа)
+state.local_has_hostile = True
 
 stats = {'sites_cleared': 0, 'kills': 0, 'drones_lost': 0, 'escapes': 0}
 bot = EveBot(stats=stats)
@@ -351,11 +361,67 @@ picked = bot._pick_warp_menu_item(state)
 print(f"11c) direct 20 km    -> {picked.get('text') if picked else None}")
 assert picked is not None and picked.get('text') == 'Warp to Within 20 km'
 
-# ============ 12. Живой дамп raw_dump_20260902_153738.json ============
-# Меню в дампе уже открыто, подменю дистанций раскрыто. Проверяем, что бот
-# выбирает 'Warp to Within' и клик (центр строки) попадает внутрь пунктов.
-with open("raw_dump_20260902_153738.json", "r", encoding="utf-8") as f:
-    live = json.load(f)
+# ============ 12. Живой дамп с открытым меню варпа ============
+# Живой дамп raw_dump_20260902_153738.json больше не в репозитории — собираем
+# эквивалентное дерево UI инлайн (та же структура, что у настоящих дампов EVE:
+# l_menu -> ContextMenu/ContextSubMenu -> mainCont -> MenuEntryView -> TextBody).
+def _menu_entry(text, rx, ry, w, h, submenu=False):
+    node = {
+        'pythonObjectTypeName': 'MenuEntryView',
+        'dictEntriesOfInterest': {
+            '_name': f'context_menu_{text}',
+            '_displayX': rx, '_displayY': ry,
+            '_displayWidth': w, '_displayHeight': h,
+        },
+        'children': [
+            {'pythonObjectTypeName': 'TextBody',
+             'dictEntriesOfInterest': {'_setText': text},
+             'children': []},
+        ],
+    }
+    if submenu:
+        node['children'].append({
+            'pythonObjectTypeName': 'Sprite',
+            'dictEntriesOfInterest': {'_texturePath': 'res:/UI/Texture/WindowMenus/1_16_14.png'},
+            'children': [],
+        })
+    return node
+
+
+def _menu_window(obj_type, wx, wy, entries):
+    return {
+        'pythonObjectTypeName': obj_type,
+        'dictEntriesOfInterest': {'_displayX': wx, '_displayY': wy},
+        'children': [{
+            'pythonObjectTypeName': 'ContainerAutoSize',
+            'dictEntriesOfInterest': {'_name': 'mainCont', '_displayX': 4, '_displayY': 4},
+            'children': entries,
+        }],
+    }
+
+
+live = {
+    'pythonObjectTypeName': 'UIRoot',
+    'dictEntriesOfInterest': {'_name': 'Desktop', '_displayX': 0, '_displayY': 0},
+    'children': [{
+        'pythonObjectTypeName': 'LayerCore',
+        'dictEntriesOfInterest': {'_name': 'l_menu', '_displayX': 0, '_displayY': 0},
+        'children': [
+            # Основное меню: 'Warp to Within 0 m' @ (664,97), 'Warp to Within' @ (664,119)
+            _menu_window('ContextMenu', 660, 93, [
+                _menu_entry('Warp to Within 0 m', 0, 0, 163, 22),
+                _menu_entry('Warp to Within', 0, 22, 163, 22, submenu=True),
+                _menu_entry('Align to', 0, 44, 163, 22),
+            ]),
+            # Раскрытое подменю дистанций: 'Within 70 km' @ (837,229)
+            _menu_window('ContextSubMenu', 833, 71, [
+                _menu_entry(f'Within {d}', 0, i * 22, 104, 22)
+                for i, d in enumerate(['0 m', '10 km', '20 km', '30 km',
+                                       '40 km', '50 km', '60 km', '70 km'])
+            ]),
+        ],
+    }],
+}
 live_state, _ = EveParserNew().parse(live)
 picked = bot._pick_warp_menu_item(live_state)
 ttext = picked.get('text') if picked else None
@@ -376,5 +442,114 @@ dx = di.get('x') + di.get('w') // 2           # центр строки 'Within 
 dy = di.get('y') + di.get('h') // 2
 assert 837 <= dx <= 941 and 229 <= dy <= 251, (dx, dy)
 print(f"12c) 'Within 70 km'  -> центр клика ({dx},{dy}) попадает в строку")
+
+# ===== 13. МОДАЛЬНОЕ ОКНО INFORMATION =====
+print("\n--- 13. Модальное окно Information ---")
+
+# Создаём состояние с открытым модальным окном Information
+from ParsedUIState import ParsedUIState
+
+modal_state = ParsedUIState()
+modal_state.modal_info = {
+    'open': True,
+    'name': 'Information',
+    'x': 569, 'y': 299, 'w': 400, 'h': 400,
+    'close': {'x': 0, 'y': 324, 'w': 380, 'h': 32}  # нижняя кнопка Close
+}
+
+# 13a: первая реакция на модалку — Enter (клик Close только запасной вариант)
+reset_mock()
+bot.think(modal_state, use_drones=True)
+keys = pressed_keys()
+assert keys == ['enter'], f"первая реакция на модалку — Enter, а не {keys}"
+assert not pag.click.call_args_list, "при первых попытках кликов быть не должно"
+print("13a) Information открыта -> нажат Enter (1-я попытка)")
+
+# 13a2: модалка висит после 2 Enter -> клик по центру кнопки Close
+#       (0 + 380//2, 324 + 32//2) = (190, 340)
+reset_mock()
+bot.think(modal_state, use_drones=True)   # попытка 2 -> снова Enter
+assert pressed_keys() == ['enter'], "попытка 2 — тоже Enter"
+assert not pag.click.call_args_list, "на 2-й попытке клика ещё быть не должно"
+reset_mock()
+bot.think(modal_state, use_drones=True)   # попытка 3 -> клик по Close
+click_calls = pag.click.call_args_list
+assert click_calls, "на 3-й попытке бот должен кликнуть по Close"
+click = click_calls[0]
+click_x = click.kwargs.get('x') or (click.args[0] if click.args else None)
+click_y = click.kwargs.get('y') or (click.args[1] if len(click.args) > 1 else None)
+assert click_x == 190 and click_y == 340, f"клик по Close должен быть (190,340), а не ({click_x},{click_y})"
+assert 'enter' not in pressed_keys(), "на 3-й попытке Enter уже не нажимается (только клик)"
+print(f"13a2) Enter не помог -> клик по Close ({click_x},{click_y}) — центр кнопки")
+
+# 13b: без кнопки Close — Enter на каждой попытке (кликать некуда)
+modal_state2 = ParsedUIState()
+modal_state2.modal_info = {
+    'open': True,
+    'name': 'Information',
+    'x': 569, 'y': 299, 'w': 400, 'h': 400,
+    'close': None  # кнопка не найдена
+}
+
+reset_mock()
+for _ in range(4):
+    bot.think(modal_state2, use_drones=True)
+keys = pressed_keys()
+assert keys == ['enter'] * 4, f"без Close должны быть только Enter, а не {keys}"
+assert not pag.click.call_args_list, "без кнопки Close кликов быть не должно"
+print("13b) Information без кнопки Close -> Enter на каждой попытке")
+
+# Модалка закрыта — бот НЕ должен кликать и не должен нажимать Enter,
+# плюс счётчик попыток сбрасывается
+modal_state3 = ParsedUIState()
+modal_state3.modal_info = {'open': False}
+
+reset_mock()
+bot.think(modal_state3, use_drones=True)
+assert not pag.click.call_args_list, "при закрытой модалке кликов не должно быть"
+assert 'enter' not in pressed_keys(), "при закрытой модалке Enter не нажимается"
+assert bot._modal_attempts == 0, "счётчик попыток должен сброситься после закрытия модалки"
+print("13c) Модалка закрыта -> нет кликов и Enter, счётчик попыток сброшен")
+
+# 13d: новая модалка после закрытия -> опять сначала Enter (счётчик реально обнулился)
+modal_state3.modal_info = {
+    'open': True,
+    'name': 'Information',
+    'x': 569, 'y': 299, 'w': 400, 'h': 400,
+    'close': {'x': 0, 'y': 324, 'w': 380, 'h': 32}
+}
+reset_mock()
+bot.think(modal_state3, use_drones=True)
+assert pressed_keys() == ['enter'] and not pag.click.call_args_list, \
+    "после сброса новая модалка снова должна закрываться Enter'ом"
+print("13d) Новая модалка после закрытия -> снова сначала Enter")
+
+# ===== 14. ЖИВОЙ ДАМП raw_dump_20260902_191755.json (модалка после варпа) =====
+print("\n--- 14. Живой дамп: Information 'Sansha Hidden Rally Point' ---")
+from full_parser import parse_modal_info
+
+with open("raw_dump_20260902_191755.json", "r", encoding="utf-8") as f:
+    live_dump = json.load(f)
+
+modal = parse_modal_info(live_dump)
+assert modal['open'] is True, f"модалка должна быть найдена: {modal}"
+assert modal['name'] == 'Information', f"заголовок окна: {modal['name']!r}"
+wx, wy, ww, wh = modal['x'], modal['y'], modal['w'], modal['h']
+cb = modal['close']
+assert cb, f"в живом дампе должна найтись кнопка Close: {modal}"
+# Кнопка обязана лежать внутри окна (иначе координаты задвоены — старый баг)
+assert wx <= cb['x'] and cb['x'] + cb['w'] <= wx + ww, f"Close вне окна по X: {modal}"
+assert wy <= cb['y'] and cb['y'] + cb['h'] <= wy + wh, f"Close вне окна по Y: {modal}"
+print(f"14a) parse_modal_info: window=({wx},{wy}) {ww}x{wh}, close={cb} — внутри окна")
+
+# 14b: бот реагирует на живую модалку Enter'ом (и только им, раз это первая попытка)
+live_state = ParsedUIState()
+live_state.modal_info = modal
+bot._modal_attempts = 0
+reset_mock()
+bot.think(live_state, use_drones=True)
+assert pressed_keys() == ['enter'], f"живая модалка -> Enter, а не {pressed_keys()}"
+assert not pag.click.call_args_list, "на первой попытке клика быть не должно"
+print("14b) живая модалка Information -> Enter")
 
 print("\nALL BOT INTEGRATION ASSERTIONS PASSED")

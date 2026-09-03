@@ -44,6 +44,7 @@ class EveBot:
             'menu_settle': 0.8,                 # пауза после открытия меню до клика по пункту, сек
             'submenu_settle': 1.0,              # пауза после появления подменю до клика по дистанции, сек
             'arrival_settle_time': 15.0,        # пауза после варпа (овервью прогружается), сек
+            'modal_enter_attempts': 2,          # сколько раз жать Enter у модалки Information, прежде чем кликать Close
         }
 
         # --- Микро-FSM дронов: FIGHTING | RECALLING | COOLDOWN ---
@@ -59,6 +60,9 @@ class EveBot:
         self._skip_coords = {}           # координаты целей, не поддающихся локу -> ts
         self._last_attack_press = 0.0
         self._recent_keys = {}           # защита от двойного нажатия (выключит модуль)
+
+        # --- Модальное окно Information (всплывает после варпа): закрытие Enter -> клик Close ---
+        self._modal_attempts = 0
 
         # --- Миссия: полёт по аномалиям из probe scanner ---
         # IDLE -> MENU_WAIT (ПКМ по строке) -> SUBMENU_WAIT (дистанция) -> WARP_CLICKED
@@ -155,6 +159,36 @@ class EveBot:
         if not self._activate_game_window():
             print(f"bot: no game window active")
             return # Если окно не найдено, ничего не делаем
+        
+        # 0a. ПРИОРИТЕТ: ЗАКРЫТЬ МОДАЛЬНОЕ ОКНО INFORMATION (блокирует весь ввод).
+        #     Всплывает после варпа на аномалию ('Sansha Hidden Rally Point' и т.п.).
+        #     Проще всего нажать Enter — у окна Information в фокусе кнопка Close
+        #     (дефолтная). Если Enter не помог (модалка всё ещё висит), переходим
+        #     к клику по кнопке Close (координаты даёт parse_modal_info).
+        modal = getattr(state, 'modal_info', None) or {}
+        if modal.get('open'):
+            self._modal_attempts += 1
+            if self._modal_attempts <= self.cfg['modal_enter_attempts']:
+                # Первые попытки: Enter (универсальное закрытие Information-окна)
+                pyautogui.press('enter')
+                self._vlog(f"modal: pressed Enter (attempt {self._modal_attempts})")
+            else:
+                # Enter не помог — клик по кнопке Close (нижняя большая кнопка или верхняя иконка)
+                close_btn = modal.get('close')
+                if close_btn:
+                    cx = close_btn['x'] + close_btn['w'] // 2
+                    cy = close_btn['y'] + close_btn['h'] // 2
+                    ox, oy = self._get_offset()
+                    pyautogui.click(ox + cx, oy + cy)
+                    self._vlog(f"modal: clicked Close @ ({cx},{cy}) (attempt {self._modal_attempts})")
+                else:
+                    # Кнопки Close нет — продолжаем жать Enter
+                    pyautogui.press('enter')
+                    self._vlog(f"modal: pressed Enter (no Close button, attempt {self._modal_attempts})")
+            time.sleep(0.5)
+            return
+        # Модалки нет — сбрасываем счётчик попыток закрытия
+        self._modal_attempts = 0
         
         # Статистика сессии: грубая эвристика "сайт зачищен" (до внедрения FSM)
         if state.npc_all:

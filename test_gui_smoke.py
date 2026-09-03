@@ -23,7 +23,9 @@ _t.sleep = lambda *_: None  # без реальных пауз
 import main as appmod
 from new_parser import EveParserNew
 
-with open("uiroot_new.json", "r", encoding="utf-8") as f:
+import os
+uiroot_path = "uiroot_new.json" if os.path.exists("uiroot_new.json") else "raw_dump_20260902_191755.json"
+with open(uiroot_path, "r", encoding="utf-8") as f:
     data = json.load(f)
 state, draw_list = EveParserNew().parse(data)
 

@@ -37,7 +37,7 @@ from ParsedUIState import ParsedUIState
 
 # Полный разбор всего UI (HP, дроны, овервью и т.д.) переиспользуем из полного парсера,
 # а локальный чат разбираем СВОИМ (более точным) алгоритмом — см. parse_local_chat_new.
-from full_parser import parse_ui_root, npc_class_from_values
+from full_parser import (parse_ui_root, npc_class_from_values, parse_modal_info)
 
 STANDING_NEUTRAL = "NEUTRAL"
 STANDING_HOSTILE = "HOSTILE"
@@ -439,6 +439,9 @@ class EveParserNew:
         state.npc_battlecruiser = npc['battlecruisers']
         state.npc_battleship = npc['battleships']
 
+        # Модальные окна (телеграммы/Information) — блокируют ввод; бот их закрывает
+        state.modal_info = parse_modal_info(json_data)
+
         # Дополнительная нормализация полей (репки, боевой режим) для отладки
         self._finalize_state(state)
 
@@ -607,6 +610,15 @@ def build_debug_blocks(state: ParsedUIState) -> List[Tuple[str, str]]:
     add('title', "EVE PARSER DEBUG")
     dim(f"{'=' * 74}")
     dim(f"updated: {ts}  window: {state.window_width}x{state.window_height}  fps: {state.fps if state.fps else '-'}")
+
+    # ===== 0. МОДАЛЬНЫЕ ОКНА (blocking popup) =====
+    modal = getattr(state, 'modal_info', None) or {}
+    if modal.get('open'):
+        add('danger', f"  MODAL BLOCKING: {modal.get('name') or '?'} "
+                      f"@ ({modal.get('x')},{modal.get('y')}) "
+                      f"close={bool(modal.get('close'))}")
+    else:
+        dim("  (no modal blocking window)")
 
     # ===== 1. КОРАБЛЬ =====
     header("== SHIP (HP / SPEED) ==")

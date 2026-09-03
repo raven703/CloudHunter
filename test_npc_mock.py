@@ -22,7 +22,9 @@ def inject_npc(node, label):
     return False
 
 
-with open("uiroot_new.json", "r", encoding="utf-8") as f:
+import os
+uiroot_path = "uiroot_new.json" if os.path.exists("uiroot_new.json") else "raw_dump_20260902_191755.json"
+with open(uiroot_path, "r", encoding="utf-8") as f:
     data = json.load(f)
 
 # Находим все SpaceObjectIcon верхнего уровня овервью и вешаем на них NPC-метки
@@ -45,6 +47,8 @@ walk(data)
 print(f"Injected NPC labels: {count}")
 
 state, draw_list = EveParserNew().parse(data)
+# В запасном дампе локал может быть чистым — форсируем врага для проверки EMERGENCY_EXIT
+state.local_has_hostile = True
 print(f"npc_all:            {len(state.npc_all)}  -> {state.npc_all[:3]}")
 print(f"npc_frigate:        {len(state.npc_frigate)}")
 print(f"npc_battleship:     {len(state.npc_battleship)}")

@@ -108,3 +108,13 @@ class ParsedUIState:
     is_loading: bool = False
     chat_channels: List[str] = field(default_factory=list)
     fps: int = 0
+
+    # === МОДАЛЬНЫЕ ОКНА (blocking popup, например 'Information') ===
+    modal_info: Dict[str, Any] = field(default_factory=dict)
+    # из full_parser.parse_modal_info:
+    # {
+    #   'open': bool,            # есть модалка Telecom с заголовком Information
+    #   'name': str,             # заголовок окна
+    #   'x': int, 'y': int, 'w': int, 'h': int,
+    #   'close': None | {'x','y','w','h'}   # кнопка Close
+    # }

@@ -1,13 +1,13 @@
 {
   "meta": {
     "schema_version": 1,
-    "timestamp": 1788363878.123,
-    "datetime": "2026-09-02 18:44:38",
+    "timestamp": 1788459793.386,
+    "datetime": "2026-09-03 21:23:13",
     "window": {
       "width": 1497,
       "height": 1001
     },
-    "ui_root_address": "0x2346FE732E8",
+    "ui_root_address": "0x22AAE57D358",
     "is_loading": false,
     "fps": 0
   },
@@ -26,13 +26,13 @@
       "structure_pct": 100.0,
       "capacitor_pct": 100.0
     },
-    "speed_mps": 0.0,
+    "speed_mps": 0.6,
     "movement": {
-      "is_warp": true,
+      "is_warp": false,
       "is_establishing": false,
       "is_orbiting": false,
       "is_docked": false,
-      "state": "WARP"
+      "state": "MOVING"
     },
     "is_pvp": false
   },
@@ -98,36 +98,14 @@
   "selected_item": null,
   "scanner": [
     {
-      "id": "QGP-560",
-      "name": "Sansha Hidden Hub",
+      "id": "BPN-552",
+      "name": "Sansha Hidden Rally Point",
       "group": "Combat Site",
-      "distance": 2284359485589.0,
+      "distance": 1790686512279.0,
       "signal": 0.0,
       "type": "combat",
-      "x": 507,
+      "x": 533,
       "y": 82,
-      "h": 20
-    },
-    {
-      "id": "OBT-172",
-      "name": "Sansha Hidden Hub",
-      "group": "Combat Site",
-      "distance": 4793115777228.0,
-      "signal": 0.0,
-      "type": "combat",
-      "x": 507,
-      "y": 102,
-      "h": 20
-    },
-    {
-      "id": "OKW-372",
-      "name": "Sansha Hidden Hub",
-      "group": "Combat Site",
-      "distance": 1688959960202.9998,
-      "signal": 0.0,
-      "type": "combat",
-      "x": 507,
-      "y": 122,
       "h": 20
     }
   ],
@@ -141,7 +119,7 @@
     "buttons": [
       {
         "name": "mail",
-        "has_notification": false,
+        "has_notification": true,
         "notification_count": 0
       },
       {
@@ -185,17 +163,12 @@
         "notification_count": 0
       },
       {
-        "name": "form.VirtualGroupWindow",
-        "has_notification": true,
-        "notification_count": 0
-      },
-      {
         "name": "uicontrols.Window",
         "has_notification": true,
         "notification_count": 0
       }
     ],
-    "clock": "15:44"
+    "clock": "18:23"
   },
   "executor": {
     "combat_mode": "IDLE",
@@ -211,8 +184,8 @@
     "hp_armor": 1.0,
     "hp_structure": 1.0,
     "hp_capacitor": 1.0,
-    "speed_mps": 0.0,
-    "is_warp": 1,
+    "speed_mps": 0.6,
+    "is_warp": 0,
     "is_establishing": 0,
     "is_orbiting": 0,
     "is_docked": 0,
