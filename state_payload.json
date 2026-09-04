@@ -1,13 +1,13 @@
 {
   "meta": {
     "schema_version": 1,
-    "timestamp": 1788532277.341,
-    "datetime": "2026-09-04 17:31:17",
+    "timestamp": 1788550578.413,
+    "datetime": "2026-09-04 22:36:18",
     "window": {
       "width": 1497,
       "height": 1001
     },
-    "ui_root_address": "0x1EBAE654DA0",
+    "ui_root_address": "0x272C4D8FD68",
     "is_loading": false,
     "fps": 0
   },
@@ -21,18 +21,18 @@
   },
   "ship": {
     "hp": {
-      "shield_pct": 100.0,
-      "armor_pct": 100.0,
+      "shield_pct": 0.0,
+      "armor_pct": 89.0,
       "structure_pct": 100.0,
-      "capacitor_pct": 79.2
+      "capacitor_pct": 55.6
     },
     "speed_mps": 0.0,
     "movement": {
       "is_warp": false,
-      "is_establishing": false,
+      "is_establishing": true,
       "is_orbiting": false,
       "is_docked": false,
-      "state": "STATIONARY"
+      "state": "ALIGNING"
     },
     "is_pvp": false
   },
@@ -82,17 +82,120 @@
     "entries": []
   },
   "targets": {
-    "count": 0,
-    "active": null,
-    "locked": []
+    "count": 3,
+    "active": {
+      "name": "Centatis Daemon",
+      "distance": 67000.0,
+      "is_active": true,
+      "x": 400,
+      "y": 587
+    },
+    "locked": [
+      {
+        "name": "Centatis Daemon",
+        "distance": 67000.0,
+        "is_active": true,
+        "x": 400,
+        "y": 587
+      },
+      {
+        "name": "Centatis Phantasm",
+        "distance": 70000.0,
+        "is_active": false,
+        "x": 510,
+        "y": 587
+      },
+      {
+        "name": "Centus Dread Lord",
+        "distance": 72000.0,
+        "is_active": false,
+        "x": 620,
+        "y": 587
+      }
+    ]
   },
   "npc": {
-    "count": 0,
-    "all": [],
+    "count": 9,
+    "all": [
+      {
+        "x": 1038,
+        "y": 242
+      },
+      {
+        "x": 1038,
+        "y": 266
+      },
+      {
+        "x": 1038,
+        "y": 290
+      },
+      {
+        "x": 1038,
+        "y": 338
+      },
+      {
+        "x": 1038,
+        "y": 362
+      },
+      {
+        "x": 1038,
+        "y": 314
+      },
+      {
+        "x": 1038,
+        "y": 434
+      },
+      {
+        "x": 1038,
+        "y": 410
+      },
+      {
+        "x": 1038,
+        "y": 386
+      }
+    ],
     "frigates": [],
     "cruisers": [],
-    "battlecruisers": [],
-    "battleships": []
+    "battlecruisers": [
+      {
+        "x": 1038,
+        "y": 242
+      },
+      {
+        "x": 1038,
+        "y": 266
+      }
+    ],
+    "battleships": [
+      {
+        "x": 1038,
+        "y": 290
+      },
+      {
+        "x": 1038,
+        "y": 338
+      },
+      {
+        "x": 1038,
+        "y": 362
+      },
+      {
+        "x": 1038,
+        "y": 314
+      },
+      {
+        "x": 1038,
+        "y": 434
+      },
+      {
+        "x": 1038,
+        "y": 410
+      },
+      {
+        "x": 1038,
+        "y": 386
+      }
+    ]
   },
   "local_chat": {
     "player_count": 0,
@@ -101,95 +204,249 @@
     "threat": "SAFE",
     "players": []
   },
-  "overview": [],
-  "selected_item": null,
+  "overview": [
+    {
+      "name": "233",
+      "distance": 67000.0,
+      "type": "",
+      "x": 1038,
+      "y": 242,
+      "icon": "res:/UI/Texture/Shared/Brackets/npcbattlecruiser_16.png",
+      "npc_class": "BATTLECRUISER"
+    },
+    {
+      "name": "261",
+      "distance": 70000.0,
+      "type": "",
+      "x": 1038,
+      "y": 266,
+      "icon": "res:/UI/Texture/Shared/Brackets/npcbattlecruiser_16.png",
+      "npc_class": "BATTLECRUISER"
+    },
+    {
+      "name": "Centus Dread Lord",
+      "distance": 62000.0,
+      "type": "",
+      "x": 1038,
+      "y": 290,
+      "icon": "res:/UI/Texture/Shared/Brackets/npcbattleship_16.png",
+      "npc_class": "BATTLESHIP"
+    },
+    {
+      "name": "Centus Dread Lord",
+      "distance": 72000.0,
+      "type": "",
+      "x": 1038,
+      "y": 338,
+      "icon": "res:/UI/Texture/Shared/Brackets/npcbattleship_16.png",
+      "npc_class": "BATTLESHIP"
+    },
+    {
+      "name": "Centus Dread Lord",
+      "distance": 72000.0,
+      "type": "",
+      "x": 1038,
+      "y": 362,
+      "icon": "res:/UI/Texture/Shared/Brackets/npcbattleship_16.png",
+      "npc_class": "BATTLESHIP"
+    },
+    {
+      "name": "Centus Dread Lord",
+      "distance": 64000.0,
+      "type": "",
+      "x": 1038,
+      "y": 314,
+      "icon": "res:/UI/Texture/Shared/Brackets/npcbattleship_16.png",
+      "npc_class": "BATTLESHIP"
+    },
+    {
+      "name": "Centus Tyrant",
+      "distance": 73000.0,
+      "type": "",
+      "x": 1038,
+      "y": 434,
+      "icon": "res:/UI/Texture/Shared/Brackets/npcbattleship_16.png",
+      "npc_class": "BATTLESHIP"
+    },
+    {
+      "name": "Centus Tyrant",
+      "distance": 64000.0,
+      "type": "",
+      "x": 1038,
+      "y": 410,
+      "icon": "res:/UI/Texture/Shared/Brackets/npcbattleship_16.png",
+      "npc_class": "BATTLESHIP"
+    },
+    {
+      "name": "Centus Tyrant",
+      "distance": 62000.0,
+      "type": "",
+      "x": 1038,
+      "y": 386,
+      "icon": "res:/UI/Texture/Shared/Brackets/npcbattleship_16.png",
+      "npc_class": "BATTLESHIP"
+    }
+  ],
+  "selected_item": {
+    "name": "Centus Dread Lord",
+    "distance": 72000.0,
+    "is_target": true,
+    "icon": "res:/dx9/model/ship/sansha/battleship/sb1/icons/2295_64.png",
+    "x": 1016,
+    "y": 0,
+    "w": 481,
+    "h": 140,
+    "actions": [
+      {
+        "name": "selectedItemApproach",
+        "action": "Approach",
+        "x": 1026,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/approach_32px.png"
+      },
+      {
+        "name": "selectedItemWarpTo",
+        "action": "Warp To",
+        "x": 1062,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/warp_to_32px.png"
+      },
+      {
+        "name": "selectedItemOrbit",
+        "action": "Orbit",
+        "x": 1098,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/orbit_32px.png"
+      },
+      {
+        "name": "selectedItemKeepAtRange",
+        "action": "Keep at Range",
+        "x": 1134,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/keep_at_distance_32px.png"
+      },
+      {
+        "name": "selectedItemUnLockTarget",
+        "action": "Unlock Target",
+        "x": 1170,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/target_32px.png"
+      },
+      {
+        "name": "selectedItemLookAt",
+        "action": "Look At",
+        "x": 1206,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/look_at_32px.png"
+      },
+      {
+        "name": "selectedItemSetInterest",
+        "action": "Set Interest",
+        "x": 1242,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/camera_track_32px.png"
+      },
+      {
+        "name": "selectedItemShowInfo",
+        "action": "Show Info",
+        "x": 1278,
+        "y": 98,
+        "w": 32,
+        "h": 32,
+        "icon": "res:/UI/Texture/eveicon/control_icons/show_info_32px.png"
+      }
+    ]
+  },
   "scanner": [
     {
-      "id": "XAC-266",
-      "name": "Sansha Forsaken Hub",
-      "group": "Combat Site",
-      "distance": 1816118150298.0,
+      "id": "UGE-464",
+      "name": "Small Mercoxit Deposit",
+      "group": "Ore Site",
+      "distance": 4481952206172.0,
       "signal": 0.0,
-      "type": "combat",
+      "type": "ore",
       "x": 446,
-      "y": 69,
+      "y": 82,
       "h": 20
     },
     {
-      "id": "FEL-064",
-      "name": "Sansha Forsaken Hub",
-      "group": "Combat Site",
-      "distance": 2386086037665.0,
+      "id": "MLD-940",
+      "name": "Small Arkonor and Bistot Deposit",
+      "group": "Ore Site",
+      "distance": 789876757296.0,
       "signal": 0.0,
-      "type": "combat",
+      "type": "ore",
       "x": 446,
-      "y": 89,
+      "y": 102,
       "h": 20
     },
     {
-      "id": "FFM-435",
-      "name": "Sansha Forsaken Hub",
+      "id": "IDD-622",
+      "name": "Sansha Sanctum",
       "group": "Combat Site",
-      "distance": 2080906381437.0,
+      "distance": 84000.0,
       "signal": 0.0,
       "type": "combat",
       "x": 446,
-      "y": 109,
+      "y": 122,
       "h": 20
     },
     {
-      "id": "IBI-210",
-      "name": "Sansha Forsaken Hub",
+      "id": "GMH-646",
+      "name": "Sansha Hidden Rally Point",
       "group": "Combat Site",
-      "distance": 1846037724438.0,
+      "distance": 884123415837.0,
       "signal": 0.0,
       "type": "combat",
       "x": 446,
-      "y": 129,
+      "y": 142,
       "h": 20
     },
     {
-      "id": "IAU-768",
-      "name": "Sansha Forlorn Hub",
+      "id": "QGP-560",
+      "name": "Sansha Hidden Hub",
       "group": "Combat Site",
-      "distance": 2466868887843.0,
+      "distance": 489185037189.0,
       "signal": 0.0,
       "type": "combat",
       "x": 446,
-      "y": 149,
+      "y": 162,
       "h": 20
     },
     {
-      "id": "LKJ-171",
-      "name": "Sansha Forlorn Hub",
+      "id": "OBT-172",
+      "name": "Sansha Hidden Hub",
       "group": "Combat Site",
-      "distance": 2121297806526.0,
+      "distance": 4474472312637.0,
       "signal": 0.0,
       "type": "combat",
       "x": 446,
-      "y": 169,
+      "y": 182,
       "h": 20
     },
     {
-      "id": "RMZ-590",
-      "name": "Sansha Forlorn Hub",
+      "id": "OKW-372",
+      "name": "Sansha Hidden Hub",
       "group": "Combat Site",
-      "distance": 1931308510737.0,
+      "distance": 888611351958.0,
       "signal": 0.0,
       "type": "combat",
       "x": 446,
-      "y": 189,
-      "h": 20
-    },
-    {
-      "id": "PVM-280",
-      "name": "Sansha Forlorn Hub",
-      "group": "Combat Site",
-      "distance": 2501276398104.0,
-      "signal": 0.0,
-      "type": "combat",
-      "x": 446,
-      "y": 209,
+      "y": 202,
       "h": 20
     }
   ],
@@ -203,7 +460,7 @@
     "buttons": [
       {
         "name": "mail",
-        "has_notification": false,
+        "has_notification": true,
         "notification_count": 0
       },
       {
@@ -224,7 +481,7 @@
       {
         "name": "chat",
         "has_notification": true,
-        "notification_count": 1
+        "notification_count": 0
       },
       {
         "name": "assets",
@@ -252,25 +509,38 @@
         "notification_count": 0
       }
     ],
-    "clock": "14:31"
+    "clock": "19:36"
   },
   "executor": {
-    "combat_mode": "IDLE",
+    "combat_mode": "GUNS",
     "threat_level": 0,
-    "recommended_action": "IDLE",
-    "lock_candidates": [],
+    "recommended_action": "ENGAGE_TARGETS",
+    "lock_candidates": [
+      {
+        "x": 1038,
+        "y": 242
+      },
+      {
+        "x": 1038,
+        "y": 266
+      },
+      {
+        "x": 1038,
+        "y": 290
+      }
+    ],
     "recall_drones": false,
     "activate_repairer": null,
-    "reason": "no threats and no targets"
+    "reason": "9 npc on overview"
   },
   "nn_features": {
-    "hp_shield": 1.0,
-    "hp_armor": 1.0,
+    "hp_shield": 0.0,
+    "hp_armor": 0.89,
     "hp_structure": 1.0,
-    "hp_capacitor": 0.7917,
+    "hp_capacitor": 0.5556,
     "speed_mps": 0.0,
     "is_warp": 0,
-    "is_establishing": 0,
+    "is_establishing": 1,
     "is_orbiting": 0,
     "is_docked": 0,
     "drones_in_bay": 5,
@@ -280,17 +550,150 @@
     "drones_fighting": 0,
     "drones_returning": 0,
     "drones_under_attack": 0,
-    "targets_locked": 0,
-    "npc_total": 0,
+    "targets_locked": 3,
+    "npc_total": 9,
     "npc_frigates": 0,
     "npc_cruisers": 0,
-    "npc_battlecruisers": 0,
-    "npc_battleships": 0,
+    "npc_battlecruisers": 2,
+    "npc_battleships": 7,
     "local_players": 0,
     "local_has_neutral": 0,
     "local_has_hostile": 0,
     "menu_open": 0,
     "threat_level": 0
   },
-  "debug_overlay": []
+  "debug_overlay": [
+    {
+      "rect": [
+        1029,
+        234,
+        18,
+        16
+      ],
+      "color": "#ff3333",
+      "label": "BATTLECRUISER",
+      "priority": 15
+    },
+    {
+      "rect": [
+        1029,
+        258,
+        18,
+        16
+      ],
+      "color": "#ff3333",
+      "label": "BATTLECRUISER",
+      "priority": 15
+    },
+    {
+      "rect": [
+        1029,
+        282,
+        18,
+        16
+      ],
+      "color": "#ff3333",
+      "label": "BATTLESHIP",
+      "priority": 15
+    },
+    {
+      "rect": [
+        1029,
+        330,
+        18,
+        16
+      ],
+      "color": "#ff3333",
+      "label": "BATTLESHIP",
+      "priority": 15
+    },
+    {
+      "rect": [
+        1029,
+        354,
+        18,
+        16
+      ],
+      "color": "#ff3333",
+      "label": "BATTLESHIP",
+      "priority": 15
+    },
+    {
+      "rect": [
+        1029,
+        306,
+        18,
+        16
+      ],
+      "color": "#ff3333",
+      "label": "BATTLESHIP",
+      "priority": 15
+    },
+    {
+      "rect": [
+        1029,
+        426,
+        18,
+        16
+      ],
+      "color": "#ff3333",
+      "label": "BATTLESHIP",
+      "priority": 15
+    },
+    {
+      "rect": [
+        1029,
+        402,
+        18,
+        16
+      ],
+      "color": "#ff3333",
+      "label": "BATTLESHIP",
+      "priority": 15
+    },
+    {
+      "rect": [
+        1029,
+        378,
+        18,
+        16
+      ],
+      "color": "#ff3333",
+      "label": "BATTLESHIP",
+      "priority": 15
+    },
+    {
+      "rect": [
+        400,
+        587,
+        64,
+        18
+      ],
+      "color": "#ffffff",
+      "label": "TARGET",
+      "priority": 10
+    },
+    {
+      "rect": [
+        510,
+        587,
+        64,
+        18
+      ],
+      "color": "#ffffff",
+      "label": "TARGET",
+      "priority": 10
+    },
+    {
+      "rect": [
+        620,
+        587,
+        64,
+        18
+      ],
+      "color": "#ffffff",
+      "label": "TARGET",
+      "priority": 10
+    }
+  ]
 }

@@ -348,6 +348,10 @@ class EveApp:
     def start_bot(self):
         self.running = True
         self.bot._stop_requested = False   # сброс запроса STOP (кнопка/hotkey)
+        # Сброс боевого пайплайна: settle-пауза варпа/андока и фокус с чистого листа
+        self.bot._just_exited_warp = False
+        self.bot._combat_start_ts = 0.0
+        self.bot._focus_name = None
         self.btn_start.config(state="disabled")
         self.btn_stop.config(state="normal")
         self.update_log_widget("SYSTEM: BOT STARTED")

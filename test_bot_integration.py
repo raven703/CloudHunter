@@ -50,14 +50,26 @@ bot = EveBot(stats=stats)
 bot._activate_game_window = lambda: True   # окна игры нет — не выходим из think()
 pag = sys.modules["pyautogui"]
 
+# Мокаем keyboard-модуль бота (скан-коды): тесты не должны жать реальные клавиши
+import bot as _botmod
+_kbd_presses = []
+class _FakeKeyboard:
+    def press(self, vk): _kbd_presses.append(('press', vk))
+    def release(self, vk): _kbd_presses.append(('release', vk))
+    def press_and_release(self, k): _kbd_presses.append(('press_release', k))
+_botmod._keyboard = _FakeKeyboard()
+_botmod._HAS_KEYBOARD = True
+
 
 def reset_mock():
     pag.reset_mock(return_value=False, side_effect=True)
 
 
 def pressed_keys():
-    """Список клавиш, переданных в pyautogui.press()."""
-    return [c.args[0] for c in pag.press.call_args_list if c.args]
+    """Список клавиш, переданных в pyautogui.press() и keyDown()/keyUp()."""
+    keys = [c.args[0] for c in pag.press.call_args_list if c.args]
+    keys += [c.args[0] for c in pag.keyDown.call_args_list if c.args]
+    return keys
 
 # ============ 1. HOSTILE в локале -> аварийный выход ============
 calls = []
@@ -84,80 +96,93 @@ state.selected_item = {'name': 'Rat Frigate', 'distance': 25000.0, 'actions': [
 ]}
 calls.clear()
 
-# 2a: выбор цели — одиночный клик по овервью (без ctrl)
+# 2a: захват первой цели — Ctrl+клик (она же будущая цель фокуса)
 reset_mock()
 bot.think(state, use_drones=True)
 kd = [c.args for c in pag.keyDown.call_args_list if c.args]
-print(f"2a) select target    -> step={bot._combat_step}, clicks={pag.click.call_count}, ctrl={kd}")
+print(f"2a) lock first       -> step={bot._combat_step}, clicks={pag.click.call_count}, ctrl={kd}")
 assert not calls, "safe local must NOT trigger emergency exit"
 assert state.combat_mode_active == "COMBAT"
-assert bot._combat_step == 'SELECT'
-assert pag.click.call_count == 1 and not kd, "select: single click without ctrl"
-
-# 2b: орбита выбранной цели (кнопка Orbit окна выбранного объекта)
-bot._step_ts -= 10
-reset_mock()
-bot.think(state, use_drones=True)
-moves = [c.args for c in pag.moveTo.call_args_list if c.args]
-print(f"2b) orbit action     -> step={bot._combat_step}, moves={moves}")
-assert bot._combat_step == 'ORBIT'
-assert any(1410 <= m[0] <= 1445 and 110 <= m[1] <= 116 for m in moves), \
-    f"orbit: must click Orbit button at ~(1410..1445, 113), got {moves}"
-
-# 2c: пакетный захват — Ctrl+клик по первой цели из пакета
-bot._step_ts -= 10
-reset_mock()
-bot.think(state, use_drones=True)
-kd = [c.args for c in pag.keyDown.call_args_list if c.args]
-print(f"2c) lock batch start  -> step={bot._combat_step}, ctrl={kd}, attempts={bot._lock_attempts}")
-assert bot._combat_step == 'LOCK_BATCH' and bot._lock_attempts == 1
+assert bot._combat_step == 'LOCK_FIRST'
+assert pag.click.call_count == 1, "lock: один Ctrl+клик по первой цели"
 assert kd and kd[0] == ('ctrl',), f"lock: ctrl must be held, got {kd}"
 assert len(bot._lock_queue) == 2, f"пакет должен быть из 2 целей (всего 2 в овервью), got {len(bot._lock_queue)}"
+assert bot._lock_attempts == 1
 
-# 2d: пакетный захват продолжается — Ctrl+клик по второй цели (через lock_batch_delay)
-bot._lock_batch_ts -= 10
+# 2b: таймаут лока -> повторный Ctrl+клик первой цели
+bot._step_ts -= 10
 reset_mock()
 bot.think(state, use_drones=True)
 kd = [c.args for c in pag.keyDown.call_args_list if c.args]
-print(f"2d) lock batch next   -> step={bot._combat_step}, ctrl={kd}, remaining={bot._lock_batch_remaining}")
-assert bot._combat_step == 'LOCK_BATCH'
-assert bot._lock_batch_remaining == 0, f"все цели из пакета обработаны, remaining={bot._lock_batch_remaining}"
-assert kd and kd[0] == ('ctrl',), f"lock: ctrl must be held, got {kd}"
+print(f"2b) lock retry       -> step={bot._combat_step}, ctrl={kd}, attempts={bot._lock_attempts}")
+assert bot._combat_step == 'LOCK_FIRST'
+assert bot._lock_attempts == 2
+assert kd and kd[0] == ('ctrl',), f"lock retry: ctrl must be held, got {kd}"
 
-# 2d2: после обработки всего пакета — переход в LOCK_WAIT
-bot._lock_batch_ts -= 10
-reset_mock()
-bot.think(state, use_drones=True)
-print(f"2d2) lock wait         -> step={bot._combat_step}")
-assert bot._combat_step == 'LOCK_WAIT', f"после пакета ждём локов, got {bot._combat_step}"
-
-# 2d3: в LOCK_WAIT без захваченных целей — ждём таймаут и повторяем орбиту
-bot._step_ts -= 10
+# 2c: первый лок получен -> ORBIT_FIRST: орбита вокруг ЭТОЙ ЖЕ цели (W+LMB)
+state.targets = [{'name': 'Rat', 'distance': 25000.0, 'is_active': True, 'x': 100, 'y': 100}]
+state.active_target = state.targets[0]
+bot._last_orbit_fix_ts = 0.0   # кулдаун перепроверки орбиты прошёл
 reset_mock()
 bot.think(state, use_drones=True)
 moves = [c.args for c in pag.moveTo.call_args_list if c.args]
-print(f"2d3) lock wait timeout -> step={bot._combat_step}, moves={moves}")
-assert bot._combat_step == 'ORBIT', "после таймаута без локов — снова орбита"
-assert any(1410 <= m[0] <= 1445 and 110 <= m[1] <= 116 for m in moves), \
-    f"must re-enable orbit via Orbit icon at ~(1410..1445, 113), got {moves}"
+print(f"2c) orbit first      -> step={bot._combat_step}, moves={moves}, kbd={_kbd_presses}")
+assert bot._combat_step == 'ORBIT_FIRST'
+assert any(('press', 0x11) == k for k in _kbd_presses), "орбита: W (scan 0x11) должен быть нажат"
+# Клик по строке овервью (620+рандом, 410+рандом)
+assert any(615 <= m[0] <= 655 and 405 <= m[1] <= 415 for m in moves), \
+    f"orbit: W+LMB must click overview row ~(620,410), got {moves}"
 
-# 2d4: повторный пакетный захват (2-я попытка)
+# 2d: orbit_wait прошёл -> DRONES_LAUNCH (переход; выпуск — следующим тиком)
 bot._step_ts -= 10
 reset_mock()
 bot.think(state, use_drones=True)
-kd = [c.args for c in pag.keyDown.call_args_list if c.args]
-print(f"2d4) retry batch       -> step={bot._combat_step}, ctrl={kd}, attempts={bot._lock_attempts}")
-assert bot._combat_step == 'LOCK_BATCH' and bot._lock_attempts == 2
-assert kd and kd[0] == ('ctrl',), f"lock retry: ctrl must be held, got {kd}"
+print(f"2d) drones launch t1 -> step={bot._combat_step}")
+assert bot._combat_step == 'DRONES_LAUNCH'
 
-# 2e: цель захвачена -> ATTACK + автозапуск оружия (F1 для неактивного слота)
-state.targets = [{'name': 'Rat', 'distance': 25000.0, 'is_active': True, 'x': 100, 'y': 100}]
+# 2e: DRONES_LAUNCH: выпуск дронов Shift+F (атакуют цель в фокусе)
+reset_mock()
+bot.think(state, use_drones=True)
+print(f"2e) drones launch    -> step={bot._combat_step}, pressed={pressed_keys()}")
+assert 'f' in pressed_keys() and 'shift' in pressed_keys(), "Shift+F для выпуска дронов"
+
+# 2f: дроны выпущены и атакуют -> LOCK_REST: захват второй цели пакета
+state.drones_in_space = 2
+state.drones_fighting = True
+reset_mock()
+bot.think(state, use_drones=True)
+print(f"2f) lock rest start  -> step={bot._combat_step}, remaining={bot._lock_batch_remaining}")
+assert bot._combat_step == 'LOCK_REST'
+assert bot._lock_batch_remaining == 1, f"осталась 1 цель в пакете, got {bot._lock_batch_remaining}"
+
+# 2g: lock_batch_delay прошёл -> Ctrl+клик по второй цели
+bot._lock_batch_ts -= 10
+reset_mock()
+bot.think(state, use_drones=True)
+kd = [c.args for c in pag.keyDown.call_args_list if c.args]
+moves = [c.args for c in pag.moveTo.call_args_list if c.args]
+print(f"2g) lock rest next   -> step={bot._combat_step}, ctrl={kd}, remaining={bot._lock_batch_remaining}")
+assert bot._combat_step == 'LOCK_REST'
+assert bot._lock_batch_remaining == 0, f"все цели из пакета обработаны, remaining={bot._lock_batch_remaining}"
+assert kd and kd[0] == ('ctrl',), f"lock: ctrl must be held, got {kd}"
+assert any(695 <= m[0] <= 735 and 415 <= m[1] <= 425 for m in moves), \
+    f"2nd target click ~(700,420), got {moves}"
+
+# 2h: пакет обработан -> LOCK_WAIT
+reset_mock()
+bot.think(state, use_drones=True)
+print(f"2h) lock wait        -> step={bot._combat_step}")
+assert bot._combat_step == 'LOCK_WAIT', f"после пакета ждём локов, got {bot._combat_step}"
+
+# 2i: все цели пакета в локе -> ATTACK + пушки (F1 для неактивного слота)
+state.targets = [{'name': 'Rat', 'distance': 25000.0, 'is_active': True, 'x': 100, 'y': 100},
+                 {'name': 'Rat2', 'distance': 30000.0, 'is_active': False, 'x': 100, 'y': 130}]
 state.active_target = state.targets[0]
 state.high_slots = [{'name': 'inFlightHighSlot1', 'active': False},
                     {'name': 'inFlightHighSlot2', 'active': True}]
 reset_mock()
 bot.think(state, use_drones=True)
-print(f"2e) locked           -> step={bot._combat_step}, pressed={pressed_keys()}")
+print(f"2i) locked           -> step={bot._combat_step}, pressed={pressed_keys()}")
 assert bot._combat_step == 'ATTACK'
 assert 'f1' in pressed_keys(), "auto_attack must press F1 for inactive gun slot"
 
@@ -235,6 +260,7 @@ ys = [m[1] for m in moves]
 assert any(126 <= y <= 136 for y in ys), f"click must target frigate row, got {ys}"
 
 # ============ 6. Статистика: киллы и потеря дронов ============
+stats['kills'] = 0             # сброс: фантомные киллы от предыдущих секций не учитываем
 bot._prev_locked_count = 2
 state.targets = [t_battle]   # одна цель умерла
 state.npc_all = [(620.0, 410.0)]
@@ -271,10 +297,10 @@ print(f"7) anomaly pick      -> mission={bot._mission}, right_clicks={len(right_
 assert bot._mission == 'MENU_WAIT'
 assert len(right_clicks) == 1, "mission must right-click the combat anomaly row"
 assert bot._current_anom == 'Sansha Den'
-# координаты ПКМ видны в moveTo: строка аномалии ~(500+40, 300+12) + рандом
+# координаты ПКМ видны в moveTo: строка аномалии ~(500+10, 300+12) + рандом
 moves = [c.args for c in pag.moveTo.call_args_list if c.args]
-assert any(540 <= m[0] <= 565 and 308 <= m[1] <= 316 for m in moves), \
-    f"right-click must be on the anomaly row (~543..560, 310..314), got {moves}"
+assert any(510 <= m[0] <= 545 and 310 <= m[1] <= 314 for m in moves), \
+    f"right-click must be on the anomaly name (~510..545, 310..314), got {moves}"
 
 # ============ 8. Контекстное меню: клик 'Warp to Location' ============
 state.menu_open = True
@@ -601,6 +627,7 @@ bot._current_anom = None
 bot._visited_anoms.clear()
 bot._warp_attempts = 0
 bot._last_orbit_fix_ts = 0.0
+bot._focus_name = None
 state.npc_all = [(620.0, 410.0)]
 state.npc_frigate = []
 state.targets = []
@@ -619,16 +646,29 @@ assert bot._combat_step == 'IDLE', "FSM захвата не должна ста�
 assert state.combat_mode_active == "COMBAT"
 print("15a) NPC видны, но is_warp=True -> захвата нет, ждём выхода из варпа")
 
-# 15b: варп закончился -> начинается выбор цели
+# 15a2: варп закончился -> settle-пауза: статус корабля ещё обновляется, действий нет
 state.is_warp = False
 reset_mock()
 bot.think(state, use_drones=True)
-assert bot._combat_step == 'SELECT', "после выхода из варпа FSM должна выбрать цель"
-assert pag.click.call_count == 1, "выбор цели: один клик по строке овервью"
-print("15b) is_warp=False -> выбор цели начался (SELECT)")
+print(f"15a2) warp exit settle -> step={bot._combat_step}, actions=0")
+assert bot._combat_step == 'IDLE', "в settle-паузе FSM не стартует"
+assert not pag.click.call_args_list, "в settle-паузе после варпа кликов быть не должно"
+assert not pag.moveTo.call_args_list, "в settle-паузе после варпа движений мыши быть не должно"
+assert pressed_keys() == [], "в settle-паузе после варпа хоткеев быть не должно"
 
-# 15c: иконки Orbit нет в окне выбранного объекта -> хоткей W + клик по строке
-bot._step_ts -= 10   # select_wait прошёл
+# 15b: settle прошёл -> захват ПЕРВОЙ цели (Ctrl+клик, она же цель фокуса)
+bot._combat_start_ts -= bot.cfg['warp_exit_settle'] + 1
+reset_mock()
+bot.think(state, use_drones=True)
+kd = [c.args for c in pag.keyDown.call_args_list if c.args]
+print(f"15b) first lock        -> step={bot._combat_step}, ctrl={kd}")
+assert bot._combat_step == 'LOCK_FIRST', "после стабилизации FSM захватывает первую цель"
+assert pag.click.call_count == 1, "захват: один Ctrl+клик по строке овервью"
+assert kd and kd[0] == ('ctrl',), f"захват: ctrl must be held, got {kd}"
+
+# 15c: первый лок получен -> ORBIT_FIRST: орбита вокруг ЭТОЙ ЖЕ цели (W+клик)
+state.targets = [{'name': 'Rat Frigate', 'distance': 12000.0, 'is_active': True, 'x': 100, 'y': 100}]
+state.active_target = state.targets[0]
 state.overview_entries = [
     {'name': 'Rat Frigate', 'distance': 12000.0, 'type': '', 'x': 620, 'y': 410,
      'icon': '', 'npc_class': 'FRIGATE'},
@@ -636,18 +676,23 @@ state.overview_entries = [
 state.selected_item = {'name': 'Rat Frigate', 'distance': 25000.0, 'actions': [
     {'name': 'selectedItemApproach', 'action': 'Approach', 'x': 1251, 'y': 98, 'w': 30, 'h': 30},
 ]}   # кнопки Orbit нет — должен сработать W+LMB
+bot._last_orbit_fix_ts = 0.0   # кулдаун перепроверки орбиты прошёл
+_kbd_presses.clear()
 reset_mock()
 bot.think(state, use_drones=True)
-assert 'w' in pressed_keys(), "орбита должна включаться хоткеем W при отсутствии иконки"
+print(f"15c) orbit first (W)   -> step={bot._combat_step}")
+assert bot._combat_step == 'ORBIT_FIRST'
 moves = [c.args for c in pag.moveTo.call_args_list if c.args]
 assert any(600 <= m[0] <= 660 and 400 <= m[1] <= 420 for m in moves), \
     f"W+клик должен попасть в строку цели (620,410), got {moves}"
-print("15c) нет иконки Orbit -> орбита через W + клик по строке овервью")
+assert ('press', 0x11) in _kbd_presses, "орбита: W (scan 0x11) должен быть нажат"
+print("15c) лок есть -> ORBIT_FIRST: орбита W+клик вокруг захваченной цели")
 
-# 15d: в бою орбита слетела -> включается заново вокруг атакуемой цели
+# 15d: в бою орбита слетела -> включается заново вокруг ЦЕЛИ ФОКУСА
 t_orb = {'name': '4GQ-XQ - Rat Battleship', 'distance': 8000.0, 'is_active': True,
          'x': 100, 'y': 100}
 bot._combat_step = 'ATTACK'
+bot._focus_name = '4GQ-XQ - Rat Battleship'   # фокус = захваченная линкорная цель
 state.targets = [t_orb]
 state.active_target = t_orb
 state.high_slots = [{'name': 'inFlightHighSlot1', 'active': True}]
@@ -656,70 +701,79 @@ state.drones_in_space = 0
 state.drones_under_attack = False
 state.selected_item = {'name': 'Rat Battleship', 'distance': 8000.0, 'actions': []}
 state.is_orbiting = False
-# Две строки овервью: повторная орбита должна попасть в строку АТАКУЕМОЙ
-# цели (Rat Battleship @ 700,450), а не в строку ранее выбранного фрегата
+# Две строки овервью: повторная орбита должна попасть в строку ЦЕЛИ ФОКУСА
+# (Rat Battleship @ 700,450), а не в строку ранее выбранного фрегата
 state.overview_entries = [
     {'name': 'Rat Frigate', 'distance': 12000.0, 'type': '', 'x': 620, 'y': 410,
      'icon': '', 'npc_class': 'FRIGATE'},
     {'name': 'Rat Battleship', 'distance': 8000.0, 'type': '', 'x': 700, 'y': 450,
      'icon': '', 'npc_class': 'BATTLESHIP'},
 ]
-bot._last_lock_action_ts = time.monotonic()        # focus fire не кликает
+bot._last_lock_action_ts = time.monotonic()        # фокус жив — переключения нет
 bot._last_orbit_fix_ts = time.monotonic() - 60.0   # кулдаун перепроверки прошёл
+_kbd_presses.clear()
 reset_mock()
 bot.think(state, use_drones=True)
-assert 'w' in pressed_keys(), "орбита слетела — надо включить заново (W)"
 moves = [c.args for c in pag.moveTo.call_args_list if c.args]
 assert any(680 <= m[0] <= 740 and 440 <= m[1] <= 460 for m in moves), \
-    f"повторная орбита должна быть вокруг атакуемой цели (700,450), got {moves}"
-print("15d) is_orbiting=False в бою -> орбита включена заново вокруг атакуемой цели")
+    f"повторная орбита должна быть вокруг цели фокуса (700,450), got {moves}"
+print("15d) is_orbiting=False в бою -> орбита включена заново вокруг цели фокуса")
 
 # 15e: орбита активна -> повторных команд орбиты нет
 state.is_orbiting = True
+_kbd_presses.clear()
 reset_mock()
 bot.think(state, use_drones=True)
-assert 'w' not in pressed_keys(), "орбита активна — повторное включение не нужно"
+assert ('press', 0x11) not in _kbd_presses, "орбита активна — повторное включение не нужно"
 assert not pag.moveTo.call_args_list, "при активной орбите кликов по овервью быть не должно"
 print("15e) is_orbiting=True -> орбиту не трогаем")
 
 # 15f: кулдаун перепроверки: сразу после захвата орбита не дублируется
 state.is_orbiting = False
 bot._last_orbit_fix_ts = time.monotonic()   # только что вошли в ATTACK
+_kbd_presses.clear()
 reset_mock()
 bot.think(state, use_drones=True)
-assert 'w' not in pressed_keys(), "в пределах кулдауна команду орбиты не повторяем"
+assert ('press', 0x11) not in _kbd_presses, "в пределах кулдауна команду орбиты не повторяем"
 print("15f) кулдаун после захвата цели -> дубль команды орбиты не уходит")
 
-# 15g: статус orbiting УЖЕ активен — команда орбиты НЕ дублируется
-# (проверяем на пути повтора лока: LOCK-таймаут -> орбита -> лок)
+# 15g: первый лок не сработал (таймаут) -> повторный Ctrl+клик первой цели
 state.targets = []
 state.active_target = None
 state.npc_all = [(620.0, 410.0)]
-bot._combat_step = 'LOCK_WAIT'
+bot._combat_step = 'LOCK_FIRST'
 bot._step_ts -= 10          # lock_timeout прошёл
 bot._lock_attempts = 1
-state.is_orbiting = True    # орбита уже включена
+bot._lock_queue = [(620.0, 410.0)]
+state.is_orbiting = True    # орбита уже включена — команду не дублируем
+_kbd_presses.clear()
 reset_mock()
 bot.think(state, use_drones=True)
-assert bot._combat_step == 'ORBIT', "после таймаута лока — снова ORBIT"
-assert pressed_keys() == [], f"орбита уже активна — команду не дублируем, а не {pressed_keys()}"
-moves = [c.args for c in pag.moveTo.call_args_list if c.args]
-assert not moves, f"при активной орбите кликов быть не должно, got {moves}"
-assert bot._lock_attempts == 1
-print("15g) is_orbiting=True -> команда орбиты не дублируется")
+kd = [c.args for c in pag.keyDown.call_args_list if c.args]
+print(f"15g) lock retry        -> step={bot._combat_step}, ctrl={kd}, attempts={bot._lock_attempts}")
+assert bot._combat_step == 'LOCK_FIRST', "после таймаута лока — повтор захвата"
+assert bot._lock_attempts == 2
+assert kd and kd[0] == ('ctrl',), f"повтор захвата: ctrl must be held, got {kd}"
+assert ('press', 0x11) not in _kbd_presses, "орбита уже активна — команду не дублируем"
+print("15g) таймаут лока -> повторный Ctrl+клик; активную орбиту не трогаем")
 
-# 15h: орбита слетела (is_orbiting=False) -> включается заново
+# 15h: в фазе ожидания локов орбита слетела -> включается заново вокруг цели фокуса
 state.is_orbiting = False
+bot._last_orbit_fix_ts = time.monotonic() - 60.0
 bot._combat_step = 'LOCK_WAIT'
-bot._step_ts -= 10
-bot._lock_attempts = 1
+bot._step_ts = time.monotonic()   # таймаута ещё нет
+bot._lock_queue = [(620.0, 410.0)]
+bot._focus_name = 'Rat Frigate'
+state.targets = [{'name': 'Rat Frigate', 'distance': 12000.0, 'is_active': True, 'x': 100, 'y': 100}]
+state.active_target = state.targets[0]
+_kbd_presses.clear()
 reset_mock()
 bot.think(state, use_drones=True)
-assert 'w' in pressed_keys(), "орбита слетела — включаем заново (W)"
 moves = [c.args for c in pag.moveTo.call_args_list if c.args]
 assert any(600 <= m[0] <= 660 and 400 <= m[1] <= 420 for m in moves), \
-    f"повторная орбита вокруг выбранной цели (620,410), got {moves}"
-print("15h) is_orbiting=False -> орбита включается заново")
+    f"повторная орбита вокруг цели фокуса (620,410), got {moves}"
+assert ('press', 0x11) in _kbd_presses, "орбита слетела — W должен быть нажат"
+print("15h) is_orbiting=False в LOCK_WAIT -> орбита включается заново")
 
 # ===== 16. МОДУЛИ: РЕПКА И ДВИГАТЕЛЬ ВСЕГДА ВКЛЮЧЕНЫ =====
 print("\n--- 16. Контроль модулей (репка + двигатель) ---")
@@ -879,6 +933,9 @@ state.local_has_hostile = False
 state.local_has_neutral = False
 state.is_loading = False
 bot._mission = 'IDLE'
+bot._combat_step = 'IDLE'
+bot._combat_start_ts = 0.0      # сброс settle-паузы после варпа (из секции 15)
+bot._just_exited_warp = False
 reset_mock()
 bot.request_stop()
 bot.think(state, use_drones=True)
@@ -891,18 +948,18 @@ print("17a) request_stop -> think() ничего не делает")
 bot._stop_requested = False
 reset_mock()
 bot.think(state, use_drones=True)
-assert bot._combat_step == 'SELECT', "после сброса STOP бот снова выбирает цель"
+assert bot._combat_step == 'LOCK_FIRST', "после сброса STOP бот снова захватывает цель"
 print("17b) сброс _stop_requested -> бот работает")
 
 # 17c: STOP прерывает боевую логику между фазами
-bot._combat_step = 'LOCK'
+bot._combat_step = 'LOCK_FIRST'
 bot._step_ts -= 10   # lock_timeout прошёл
 bot._lock_attempts = 1
 state.is_orbiting = False
 bot.request_stop()
 reset_mock()
 bot.think(state, use_drones=True)
-assert bot._combat_step == 'LOCK', "STOP не должен продвигать FSM (нет перехода в ORBIT)"
+assert bot._combat_step == 'LOCK_FIRST', "STOP не должен продвигать FSM (нет перехода в ORBIT_FIRST)"
 assert not pag.moveTo.call_args_list and pressed_keys() == [], \
     "STOP между фазами не даёт новых действий"
 print("17c) STOP между фазами боя -> FSM не продвигается, действий нет")
@@ -976,6 +1033,10 @@ assert not moves, f"в пределах кулдауна Undock не клика�
 print("18b) кулдаун Undock -> повторного клика нет")
 
 # 18c: Probe Scanner закрыт -> Alt+P
+# Полностью эмулируем завершение андока: сбрасываем все флаги и таймеры
+bot._undocking = False
+bot._undock_complete_ts = 0.0
+bot._undock_settle_until = 0.0
 st18.is_docked = False
 st18.probe_scanner_open = False
 st18.undock_button = None
@@ -1084,56 +1145,74 @@ state19.high_slots = [{'name': 'inFlightHighSlot1', 'active': False}]
 bot19 = EveBot(stats={'sites_cleared': 0, 'kills': 0, 'drones_lost': 0, 'escapes': 0})
 bot19._activate_game_window = lambda: True
 
-# 19a: выбор первой цели из пакета
-reset_mock()
-bot19.think(state19, use_drones=True)
-print(f"19a) select target    -> step={bot19._combat_step}, queue_size={len(bot19._lock_queue)}")
-assert bot19._combat_step == 'SELECT'
-assert len(bot19._lock_queue) == 3, f"пакет должен быть из 3 целей (lock_batch_size=3), got {len(bot19._lock_queue)}"
-assert bot19._lock_queue[0] == (620.0, 410.0), "первая цель — фрегат (приоритет)"
-print(f"     приоритет фрегатов: {bot19._lock_queue[:2]}")
-
-# 19b: орбита выбранной цели
-bot19._step_ts -= 10
-reset_mock()
-bot19.think(state19, use_drones=True)
-print(f"19b) orbit target     -> step={bot19._combat_step}")
-assert bot19._combat_step == 'ORBIT'
-
-# 19c: пакетный захват — Ctrl+клик по целям
-bot19._step_ts -= 10
+# 19a: захват первой цели пакета (Ctrl+клик, фрегат — приоритет)
 reset_mock()
 bot19.think(state19, use_drones=True)
 kd = [c.args for c in pag.keyDown.call_args_list if c.args]
-print(f"19c) lock batch start -> step={bot19._combat_step}, ctrl={kd}, remaining={bot19._lock_batch_remaining}")
-assert bot19._combat_step == 'LOCK_BATCH'
-assert bot19._lock_batch_remaining == 2, f"осталось захватать 2 цели, got {bot19._lock_batch_remaining}"
+print(f"19a) lock first       -> step={bot19._combat_step}, queue_size={len(bot19._lock_queue)}, ctrl={kd}")
+assert bot19._combat_step == 'LOCK_FIRST'
+assert len(bot19._lock_queue) == 3, f"пакет должен быть из 3 целей (lock_batch_size=3), got {len(bot19._lock_queue)}"
+assert bot19._lock_queue[0] == (620.0, 410.0), "первая цель — фрегат (приоритет)"
 assert kd and kd[0] == ('ctrl',), f"lock: ctrl must be held, got {kd}"
+print(f"     приоритет фрегатов: {bot19._lock_queue[:2]}")
 
-# 19d-e: продолжение пакета (2-я и 3-я цели)
+# 19b: первый лок получен -> ORBIT_FIRST (орбита вокруг ЭТОЙ ЖЕ цели)
+state19.targets = [{'name': 'Rat Frigate', 'distance': 10000.0, 'is_active': True, 'x': 100, 'y': 100}]
+state19.active_target = state19.targets[0]
+reset_mock()
+bot19.think(state19, use_drones=True)
+print(f"19b) orbit first      -> step={bot19._combat_step}")
+assert bot19._combat_step == 'ORBIT_FIRST'
+
+# 19c: orbit_wait прошёл -> DRONES_LAUNCH
+bot19._step_ts -= 10
+reset_mock()
+bot19.think(state19, use_drones=True)
+print(f"19c) drones launch t1 -> step={bot19._combat_step}")
+assert bot19._combat_step == 'DRONES_LAUNCH'
+
+# 19d: выпуск дронов Shift+F (атакуют цель фокуса)
+reset_mock()
+bot19.think(state19, use_drones=True)
+print(f"19d) drones launch    -> pressed={pressed_keys()}")
+assert 'f' in pressed_keys() and 'shift' in pressed_keys(), "Shift+F для выпуска дронов"
+
+# 19e: дроны выпущены и атакуют -> LOCK_REST (осталось 2 цели)
+state19.drones_in_space = 2
+state19.drones_fighting = True
+reset_mock()
+bot19.think(state19, use_drones=True)
+print(f"19e) lock rest start  -> step={bot19._combat_step}, remaining={bot19._lock_batch_remaining}")
+assert bot19._combat_step == 'LOCK_REST'
+assert bot19._lock_batch_remaining == 2, f"осталось захватать 2 цели, got {bot19._lock_batch_remaining}"
+
+# 19f-g: продолжение пакета (2-я и 3-я цели, Ctrl+клик с паузой)
 for i in range(2):
     bot19._lock_batch_ts -= 10
     reset_mock()
     bot19.think(state19, use_drones=True)
     kd = [c.args for c in pag.keyDown.call_args_list if c.args]
-    print(f"19d-{i}) lock batch {i+2}    -> step={bot19._combat_step}, remaining={bot19._lock_batch_remaining}")
-    assert bot19._combat_step == 'LOCK_BATCH'
+    print(f"19f-{i}) lock rest {i+2}    -> step={bot19._combat_step}, remaining={bot19._lock_batch_remaining}")
+    assert bot19._combat_step == 'LOCK_REST'
     assert kd and kd[0] == ('ctrl',)
 assert bot19._lock_batch_remaining == 0, "все 3 цели из пакета обработаны"
 
-# 19f: переход в LOCK_WAIT
-bot19._lock_batch_ts -= 10
+# 19h: переход в LOCK_WAIT
 reset_mock()
 bot19.think(state19, use_drones=True)
-print(f"19f) lock wait        -> step={bot19._combat_step}")
+print(f"19h) lock wait        -> step={bot19._combat_step}")
 assert bot19._combat_step == 'LOCK_WAIT'
 
-# 19g: цель захвачена -> ATTACK
-state19.targets = [{'name': 'Rat Frigate', 'distance': 10000.0, 'is_active': True, 'x': 100, 'y': 100}]
+# 19i: весь пакет в локе -> ATTACK
+state19.targets = [
+    {'name': 'Rat Frigate', 'distance': 10000.0, 'is_active': True, 'x': 100, 'y': 100},
+    {'name': 'Rat Cruiser', 'distance': 15000.0, 'is_active': False, 'x': 100, 'y': 130},
+    {'name': 'Rat Battleship', 'distance': 20000.0, 'is_active': False, 'x': 100, 'y': 160},
+]
 state19.active_target = state19.targets[0]
 reset_mock()
 bot19.think(state19, use_drones=True)
-print(f"19g) locked -> ATTACK -> step={bot19._combat_step}")
+print(f"19i) locked -> ATTACK -> step={bot19._combat_step}")
 assert bot19._combat_step == 'ATTACK'
 
 # ============ 20. Трекинг HP дронов: детект "дронов бьют" ============
@@ -1201,5 +1280,129 @@ bot20.think(state20, use_drones=True)
 print(f"20d) relaunch         -> drone_phase={bot20._drone_phase}, pressed={pressed_keys()}")
 assert bot20._drone_phase == 'FIGHTING'
 assert 'f' in pressed_keys(), "Shift+F для выпуска дронов"
+
+# ============ 21. Undock: ожидание завершения процедуры ============
+print("\n--- 21. Undock: ожидание завершения ---")
+state21 = ParsedUIState()
+state21.is_docked = True
+state21.local_has_hostile = False
+state21.local_has_neutral = False
+state21.undock_button = {'x': 1362, 'y': 289, 'w': 100, 'h': 30}
+state21.scan_results = []
+bot21 = EveBot(stats={'sites_cleared': 0, 'kills': 0, 'drones_lost': 0, 'escapes': 0})
+bot21._activate_game_window = lambda: True
+bot21.current_state = state21
+bot21.use_drones = False
+bot21.think(state21, use_drones=False)
+print(f"21a) undock click     -> _undocking={bot21._undocking}")
+assert bot21._undocking, "после клика Undock должен быть установлен флаг _undocking"
+state21.is_docked = True
+bot21.think(state21, use_drones=False)
+print(f"21b) undocking wait   -> _undocking={bot21._undocking}")
+assert bot21._undocking, "пока андок идёт — флаг остаётся"
+state21.is_docked = False
+bot21.think(state21, use_drones=False)
+print(f"21c) undock complete  -> _undocking={bot21._undocking}")
+assert not bot21._undocking, "после завершения андока флаг сбрасывается"
+
+# 21d: settle-пауза после андока — следующий тик без действий (JSON ещё не обновился)
+state21.scan_results = []
+state21.undock_button = None
+reset_mock()
+bot21.think(state21, use_drones=False)
+print(f"21d) settle pause     -> clicks={len(pag.click.call_args_list)}, "
+      f"moves={len(pag.moveTo.call_args_list)}, keys={pressed_keys()}")
+assert not pag.click.call_args_list, "в settle-паузе после андока кликов быть не должно"
+assert not pag.moveTo.call_args_list, "в settle-паузе после андока движений мыши быть не должно"
+assert pressed_keys() == [], "в settle-паузе после андока хоткеев быть не должно"
+
+# 21e: после settle-паузы бот продолжает работу (не в доке — действий андока нет)
+bot21._undock_complete_ts -= bot21.cfg['undock_settle_time'] + 1.0
+reset_mock()
+bot21.think(state21, use_drones=False)
+print(f"21e) after settle     -> clicks={len(pag.click.call_args_list)} (нормальная работа)")
+
+# ============ 22. Орбита: W+LMB основной метод ============
+print("\n--- 22. Орбита: W+LMB ---")
+state22 = ParsedUIState()
+state22.local_has_hostile = False
+state22.local_has_neutral = False
+state22.targets = []
+state22.npc_all = [(620.0, 410.0)]
+state22.is_orbiting = False
+state22.is_warp = False
+state22.is_docked = False
+state22.selected_item = {'name': 'Rat Frigate', 'distance': 25000.0}
+bot22 = EveBot(stats={'sites_cleared': 0, 'kills': 0, 'drones_lost': 0, 'escapes': 0})
+bot22._activate_game_window = lambda: True
+bot22.current_state = state22
+bot22.use_drones = False
+bot22._current_target_coords = (620.0, 410.0)
+reset_mock()
+# Мокаем keyboard.press если он есть
+keyboard_presses = []
+try:
+    import keyboard as _kb
+    orig_press = _kb.press
+    def mock_press(vk):
+        keyboard_presses.append(vk)
+        # Не вызываем оригинал, чтобы не требовались права админа
+    _kb.press = mock_press
+    _kb.release = lambda vk: keyboard_presses.append(('release', vk))
+except Exception:
+    pass
+
+_kbd_presses.clear()
+bot22._enable_orbit(state22, 0, 0, target_name='Rat Frigate')
+moves = [c.args for c in pag.moveTo.call_args_list if c.args]
+print(f"22a) W+LMB orbit      -> kbd={_kbd_presses}, moves={moves}")
+# W = VK-код 0x11 (scan code) + клик по строке цели
+assert ('press', 0x11) in _kbd_presses, "W (VK 0x11) должен быть нажат через keyboard (scan code)"
+assert any(615 <= m[0] <= 655 and 405 <= m[1] <= 415 for m in moves), \
+    f"клик по строке цели (620,410), got {moves}"
+
+# ============ 23. Дроны атакуют цель фокуса ============
+print("\n--- 23. Дроны атакуют цель фокуса ---")
+state23 = ParsedUIState()
+state23.local_has_hostile = False
+state23.local_has_neutral = False
+state23.targets = [
+    {'name': 'Rat Frigate', 'distance': 10000.0, 'is_active': False, 'x': 620, 'y': 410},
+    {'name': 'Rat Cruiser', 'distance': 25000.0, 'is_active': True, 'x': 700, 'y': 450},
+]
+state23.active_target = state23.targets[1]
+state23.drones_in_space = 5
+state23.drones_fighting = True
+state23.is_warp = False
+state23.is_docked = False
+bot23 = EveBot(stats={'sites_cleared': 0, 'kills': 0, 'drones_lost': 0, 'escapes': 0})
+bot23._activate_game_window = lambda: True
+bot23.cfg['focus_switch_cooldown'] = 0.0
+bot23.use_drones = True
+bot23.current_state = state23
+bot23._last_lock_action_ts = 0.0
+reset_mock()
+bot23._focus_maintain(state23, 0, 0, time.monotonic())
+print(f"23a) focus switch F   -> pressed={pressed_keys()}, focus={bot23._focus_name}")
+assert 'f' in pressed_keys(), "F должен быть нажат для атаки дронов на цель фокуса"
+assert bot23._focus_name == 'Rat Frigate', "фокус — фрегат (приоритет скрам-угрозы)"
+
+# 23b: фокус жив -> команда не дублируется (кликов и F нет)
+reset_mock()
+bot23._focus_maintain(state23, 0, 0, time.monotonic())
+print(f"23b) focus sticky     -> pressed={pressed_keys()}, moves={len(pag.moveTo.call_args_list)}")
+assert pressed_keys() == [], "фокус не меняется — F не жмём"
+assert not pag.moveTo.call_args_list, "фокус не меняется — кликов нет"
+
+# 23c: цель фокуса уничтожена -> переключение на следующую захваченную
+state23.targets = [state23.targets[1]]   # фрегат умер, остался крейсер
+state23.active_target = state23.targets[0]
+reset_mock()
+bot23._focus_maintain(state23, 0, 0, time.monotonic())
+moves = [c.args for c in pag.moveTo.call_args_list if c.args]
+print(f"23c) focus rotate     -> pressed={pressed_keys()}, moves={moves}, focus={bot23._focus_name}")
+assert bot23._focus_name == 'Rat Cruiser', "фокус перешёл на следующую захваченную цель"
+assert 'f' in pressed_keys(), "дроны атакуют новую цель фокуса (F)"
+assert moves, "клик по строке новой цели в панели лока"
 
 print("\nALL BOT INTEGRATION ASSERTIONS PASSED")

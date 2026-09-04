@@ -4,6 +4,13 @@ import time
 import random
 import re
 
+# keyboard — для отправки скан-кодов клавиш (работает на любой раскладке)
+try:
+    import keyboard as _keyboard
+    _HAS_KEYBOARD = True
+except ImportError:
+    _HAS_KEYBOARD = False
+
 
 class EveBot:
     def __init__(self, stats=None):
@@ -36,7 +43,10 @@ class EveBot:
             'drone_hp_check_interval': 2.0,# как часто проверять HP дронов (сек)
             # --- захват целей ---
             'lock_batch_size': 3,          # сколько целей захватывать за раз (если в овервью >= этого числа)
-            'lock_batch_delay': 0.6,       # пауза между ctrl+кликами целей в пакете (сек)
+            'lock_batch_delay': 1.5,       # пауза между ctrl+кликами целей в пакете (сек) — клик должен успеть в тик сервера
+            'ctrl_click_pause': 0.15,      # пауза Ctrl зажат -> клик -> отпустить (иначе EVE не видит модификатор)
+            'warp_exit_settle': 2.5,       # пауза после выхода из варпа: статус корабля в дампе ещё "догоняет"
+            'drone_launch_wait': 8.0,      # макс. ожидание выпуска дронов в шаге DRONES_LAUNCH (сек)
             # --- миссия: полёт по аномалиям из probe scanner ---
             'anomaly_group_filter': 'combat',   # фильтр по group+name (lower)
             'anomaly_revisit_cooldown': 600,    # сек до повторного визита аномалии
@@ -49,10 +59,14 @@ class EveBot:
             'arrival_settle_time': 15.0,        # пауза после варпа (овервью прогружается), сек
             'modal_enter_attempts': 2,          # сколько раз жать Enter у модалки Information, прежде чем кликать Close
             'orbit_recheck_cooldown': 6.0,      # как часто в бою перепроверять орбиту (сек), чтобы не задваивать команду
+            'orbit_result_check_time': 3.0,    # через сколько сек проверить результат попытки включения орбиты
+            'orbit_w_fallback_threshold': 2,   # после скольких неудач W+LMB переключиться на иконку Orbit
             'prop_keep_off_time': 25.0,         # окно "двигатель выключен перед варпом" (сек): меню варпа + старт варпа
             'repair_missing_warn_interval': 60.0,  # как часто предупреждать, если модуля ремонта нет (сек)
-            # --- старт: undock и проб-сканер ---
+            # --- андок ---
             'undock_cooldown': 5.0,            # не кликать Undock чаще (сек), пока идёт андок
+            'undock_timeout': 45.0,            # таймаут завершения андока (сек) — если статус не сменился, повторяем
+            'undock_settle_time': 5.0,         # пауза после завершения андока (сек) — JSON ещё не обновился
             'probe_open_timeout': 5.0,         # не жать Alt+P чаще, пока окно открывается (сек)
         }
 
@@ -71,6 +85,8 @@ class EveBot:
         self._last_attack_press = 0.0
         self._recent_keys = {}           # защита от двойного нажатия (выключит модуль)
         self._last_orbit_fix_ts = 0.0    # последнее повторное включение орбиты (контроль в бою)
+        self._orbit_w_fails = 0          # счётчик неудачных попыток W+LMB орбиты (фолбэк на иконку)
+        self._orbit_last_attempt_ts = 0.0  # ts последней попытки включения орбиты
         self._module_click_ts = {}       # слот -> ts последнего клика по модулю HUD (анти-даблклик)
         self._prop_keep_off_ts = 0.0     # ts выключения двигателя перед варпом (окно "не включать обратно")
 
@@ -78,6 +94,13 @@ class EveBot:
         self._lock_queue = []            # очередь целей для захвата (кандидаты из _lock_candidates)
         self._lock_batch_remaining = 0   # сколько целей осталось захватить в текущем пакете
         self._lock_batch_ts = 0.0        # ts последнего ctrl+клика в пакете
+
+        # --- Фокус: одна захваченная цель = атакуемая (пушки + дроны) ---
+        self._focus_name = None          # имя цели в фокусе; меняется только после её уничтожения
+
+        # --- Прилёт в аномалию: пауза на стабилизацию статуса после варпа ---
+        self._just_exited_warp = False   # True в тике выхода из варпа -> ставим settle-паузу
+        self._combat_start_ts = 0.0      # ts начала боевого пайплайна после варпа
 
         # --- Трекинг HP дронов (для детекта "дронов бьют") ---
         self._drone_hp_prev = {}         # drone_name -> hp (предыдущее значение)
@@ -119,6 +142,18 @@ class EveBot:
 
         # --- Старт: undock и проб-сканер ---
         self._last_undock_ts = 0.0       # последний клик Undock (анти-спам)
+        self._undocking = False          # True после клика Undock — ждём завершения андока
+        self._undock_start_ts = 0.0      # ts начала процедуры андока
+        self._undock_complete_ts = 0.0   # ts завершения андока (is_docked сменился на False)
+        self._undock_settle_until = 0.0  # ts окончания settle-паузы после андока (JSON обновляется)
+        self._orbit_last_attempt_ts = 0.0  # ts последней попытки включения орбиты (для fallback)
+        self._orbit_use_fallback = False   # True = использовать клик по иконке Orbit вместо W+LMB
+        self._undock_settle_until = 0.0  # момент, до которого ждём после андока (settle-пауза)
+        self._orbit_last_attempt_ts = 0.0 # ts последней команды орбиты (для детекта неудач)
+        self._orbit_use_fallback = False   # переключатель: W+LMB не сработал -> используем иконку
+        self._orbit_w_fails = 0           # счётчик неудач W+LMB (для переключения на иконку)
+        self._orbit_pending_check = False # True после команды орбиты — ждём проверки результата
+        self._orbit_check_ts = 0.0        # ts для отложенной проверки результата
         self._probe_open_ts = 0.0        # когда нажали Alt+P (анти-спам)
         self._probe_opening = False      # ждём, пока окно Probe Scanner откроется
 
@@ -158,6 +193,49 @@ class EveBot:
             print(f"[Bot] Ошибка при активации окна: {e}")
             return False
 
+
+    def _key_down_up(self, key: str):
+        """Нажатие клавиши через keyboard (scan-code) — работает на любой раскладке.
+
+        Для латинских букв используем виртуальный код (VK), который не зависит от
+        текущей раскладки клавиатуры (RU/EN). keyboard.press('w') не сработает,
+        если раскладка переключена на русский.
+        """
+        if not _HAS_KEYBOARD:
+            # Фолбэк на pyautogui — может не сработать на RU раскладке
+            pyautogui.press(key)
+            return
+        # Маппинг букв -> VK-коды (работают независимо от раскладки)
+        vk_map = {'w': 0x11, 'q': 0x10, 'e': 0x12, 'r': 0x13, 'a': 0x1e,
+                  's': 0x1f, 'd': 0x20, 'f': 0x21, 'g': 0x22}
+        vk = vk_map.get(key.lower())
+        if vk is not None:
+            _keyboard.press(vk)
+            time.sleep(0.05)
+            _keyboard.release(vk)
+        else:
+            pyautogui.press(key)
+
+    def _overview_row_coords(self, state, target_name=None):
+        """Координаты строки цели в овервью для клика (W+LMB).
+
+        Если target_name задан — ищем строку с таким именем.
+        Иначе — последняя выбранная строка (_current_target_coords) или
+        первая из npc_all.
+        """
+        # Сначала пробуем найти по имени в overview_entries
+        if target_name:
+            for e in getattr(state, 'overview_entries', None) or []:
+                ename = str(e.get('name') or '').strip()
+                if ename and (ename == target_name or ename in target_name or target_name in ename):
+                    return (int(e.get('x') or 0), int(e.get('y') or 0))
+        # Фолбэк: последняя выбранная строка
+        if self._current_target_coords:
+            return self._current_target_coords
+        # Фолбэк: первая цель из npc_all
+        if state.npc_all:
+            return tuple(state.npc_all[0])
+        return None
 
     def _vlog(self, msg):
         """Расширенный лог (печатается только при включённом VERBOSE LOG)."""
@@ -266,9 +344,38 @@ class EveBot:
         off_x, off_y = self._get_offset()
         now_mono = time.monotonic()
 
+        # Констатируем завершение андока: если андок был начат (_undocking=True)
+        # и корабль больше не в доке — сбрасываем флаг, даже если is_docked
+        # уже успел смениться между тиками. Запоминаем время завершения для settle-паузы.
+        if self._undocking and not state.is_docked:
+            self._undocking = False
+            self._undock_complete_ts = now_mono
+            print("[Mission] Андок завершён — корабль в космосе")
+
+        # После андока ждём settle-паузу: JSON ещё не обновился, данные старые.
+        # Без этой паузы бот читает устаревший JSON и принимает неверные решения.
+        if self._undock_complete_ts > 0 and now_mono - self._undock_complete_ts < self.cfg['undock_settle_time']:
+            self._vlog_throttled('m_undocksettle',
+                                 f"undock: жду settle-паузу {self.cfg['undock_settle_time'] - (now_mono - self._undock_complete_ts):.1f}с")
+            return
+
         if state.is_docked:
             state.combat_mode_active = "DOCKED"
-            self._undock(state, off_x, off_y, now_mono)
+            # Если андок уже идёт — ждём завершения, не кликаем повторно
+            if self._undocking:
+                if now_mono - self._undock_start_ts >= self.cfg['undock_timeout']:
+                    # Таймаут — пробуем кликнуть снова
+                    print(f"[Mission] Андок не завершился за {self.cfg['undock_timeout']}с — повторный клик")
+                    self._undocking = False
+                    self._last_undock_ts = 0.0  # сбрасываем кулдаун, чтобы кликнуть сразу
+                else:
+                    # Андок в процессе — ждём
+                    self._vlog_throttled('m_undockwait',
+                                         f"undock: жду завершения андока "
+                                         f"({now_mono - self._undock_start_ts:.1f}с / "
+                                         f"{self.cfg['undock_timeout']}с)")
+            else:
+                self._undock(state, off_x, off_y, now_mono)
             return
         if state.is_loading:
             state.combat_mode_active = "LOADING"
@@ -309,8 +416,11 @@ class EveBot:
             # --- ШАГИ 6-8: ПРИЗЕМЛЕНИЕ -> БОЙ ---
             self.no_targets_timer = None
             state.combat_mode_active = "COMBAT"
-            # NPC уже видны, но корабль ещё в варпе: ждём выхода из варпа
+            # NPC уже видны, но корабль ещё в варпе: ждём выхода из варпа.
+            # Флаг нужен для settle-паузы в _target_fsm (think() выходит раньше,
+            # чем FSM увидит варп, поэтому помечаем выход из варпа здесь).
             if state.is_warp:
+                self._just_exited_warp = True
                 self._vlog_throttled('c_warpwait',
                                      "combat: NPC в овервью, но статус WARP — "
                                      "жду выхода из варпа")
@@ -336,6 +446,8 @@ class EveBot:
 
         Вызывается, когда корабль в доке и локал безопасен. Анти-спам:
         повторный клик не чаще undock_cooldown секунд (андок занимает время).
+        После клика устанавливается флаг _undocking — бот ждёт смены статуса
+        (is_docked -> False) в основном цикле think().
         """
         btn = getattr(state, 'undock_button', None)
         if not btn:
@@ -346,6 +458,8 @@ class EveBot:
             self._vlog("undock: жду кулдаун клика Undock")
             return
         self._last_undock_ts = now_mono
+        self._undock_start_ts = now_mono
+        self._undocking = True
         print(f"[Mission] В доке и безопасно — андок (клик Undock "
               f"@ {btn['x']},{btn['y']})")
         self._click_at((btn.get('x') or 0) + off_x, (btn.get('y') or 0) + off_y)
@@ -480,6 +594,20 @@ class EveBot:
                     return m
         return None
 
+    def _press_key(self, key):
+        """Нажать клавишу через скан-код (работает на любой раскладке)."""
+        if _HAS_KEYBOARD:
+            try:
+                _keyboard.press_and_release(key)
+                return True
+            except Exception:
+                pass
+        try:
+            pyautogui.press(key)
+            return True
+        except Exception:
+            return False
+
     def _press_key_once(self, key, now):
         """Нажатие клавиши с защитой от двойного нажатия.
 
@@ -493,6 +621,43 @@ class EveBot:
         pyautogui.press(key)
         return True
 
+    def _key_down_up(self, key):
+        """Нажать и отпустить клавишу через keyboard (scan code).
+
+        Использует scan codes — работает на любой раскладке (RU/EN).
+        pyautogui.press('w') на RU-ракладке печатает 'ц' — EVE не реагирует.
+        _keyboard.press(0x11) — scan code для W (virtual key 0x57) — работает всегда.
+        """
+        # Scan codes для часто используемых клавиш (Virtual Key -> Scan Code)
+        # W = 0x11, это scan code для клавиши W (не зависит от раскладки)
+        scan_map = {
+            'w': 0x11,  # VK_W
+            'f': 0x21,  # VK_F
+            'r': 0x13,  # VK_R
+            'e': 0x12,  # VK_E
+            'q': 0x10,  # VK_Q
+            '1': 0x02,  # VK_1
+            '2': 0x03,  # VK_2
+            '3': 0x04,  # VK_3
+            '4': 0x05,  # VK_4
+            '5': 0x06,  # VK_5
+        }
+        key_lower = key.lower()
+        if key_lower in scan_map and _HAS_KEYBOARD:
+            try:
+                # Используем scan code для нажатия (работает на любой раскладке)
+                _keyboard.press(scan_map[key_lower])
+                time.sleep(0.05)
+                _keyboard.release(scan_map[key_lower])
+                return True
+            except Exception:
+                # Fallback на pyautogui если keyboard не сработал
+                pyautogui.press(key_lower)
+                return True
+        else:
+            pyautogui.press(key_lower)
+            return True
+
     def _combat_logic(self):
         if self._stop_requested:
             return
@@ -505,18 +670,19 @@ class EveBot:
         # Статистика: потери дронов / тревога "мало дронов"
         self._track_drones_state(state)
 
-        # а) ШАГ 6: FSM ЦЕЛИ: выбор из овервью -> орбита -> лок -> атака
+        # а) ШАГ 6: FSM ЦЕЛИ: лок первой цели -> орбита -> дроны -> лок пакета
         self._target_fsm(state, off_x, off_y, now)
 
-        # б) ШАГ 7: Focus fire среди захваченных целей (фрегаты-скрамеры первыми)
+        # б) ШАГ 7: Фокус: одна захваченная цель = атакуемая (пушки + дроны);
+        #    после её уничтожения — переключение на следующую захваченную
         if state.targets:
-            self._focus_fire(state, off_x, off_y, now)
+            self._focus_maintain(state, off_x, off_y, now)
 
         # в) ШАГ 8: Атака до уничтожения цели: поддерживаем цикл оружия
         self._attack_until_dead(state, now)
 
-        # г) ДРОНЫ: цикл выживания (только режим DRONES и только в бою)
-        if self.use_drones and state.targets:
+        # г) ДРОНЫ: цикл выживания (кроме фазы запуска — там запускает FSM)
+        if self.use_drones and state.targets and self._combat_step != 'DRONES_LAUNCH':
             self._drone_combat_cycle(state, now)
 
     # ==================== ЦЕЛИ: ПРИОРИТЕТЫ И ФОКУС ====================
@@ -535,7 +701,7 @@ class EveBot:
         """Является ли захваченная цель NPC-фрегатом (скрам-угроза).
 
         Сопоставляем имя цели из панели лока с именами записей овервью,
-        у которых парсер определил npc_class (см. full_parser.parse_overview_entry).
+        у которых парсер определил npc_class.
         """
         tname = str(target.get('name') or '').strip()
         if not tname:
@@ -593,50 +759,86 @@ class EveBot:
                     return (float(x), float(y))
         return self._current_target_coords
 
-    def _enable_orbit(self, state, off_x, off_y, target_name=None):
-        """Включить орбиту вокруг цели.
+    def _enable_orbit(self, state, off_x, off_y, target_name=None, force=False):
+        """Orbit: W+LMB primary, Orbit icon fallback.
 
-        Если статус orbiting уже активен — команду НЕ дублируем: повторная
-        команда орбиты сбрасывает текущую (корабль начинает кружить заново).
-
-        Способы (по приоритету):
-          1) иконка Orbit в окне выбранного объекта (клик курсором);
-          2) хоткей W + клик по строке цели в овервью (W+LMB) — если иконки
-             нет (окно выбранного объекта не распарсилось / кнопки нет).
-        Цель: атакуемая (target_name) либо последняя выбранная строка.
+        Метод:
+          1) W + клик по строке цели в овервью (W+LMB) — основной метод.
+              keyboard (VK-код 0x11): работает на любой раскладке (RU/EN).
+          2) Если W+LMB не сработал N раз — переключаемся на клик по иконке Orbit.
+          3) Если уже в орбите — не дублируем команду (кроме force=True:
+             при смене цели фокуса орбиту нужно перевести на новую цель,
+             даже если индикация is_orbiting ещё не обновилась).
         """
-        if getattr(state, 'is_orbiting', False):
-            self._vlog("orbit: статус orbiting уже активен — команду не дублирую")
-            return True
-        if self._click_action(state, 'orbit', off_x, off_y):
+        if getattr(state, 'is_orbiting', False) and not force:
+            self._vlog("orbit: already active")
+            # Сбрасываем счётчик неудач — орбита активна
+            self._orbit_w_fails = 0
             return True
         row = self._overview_row_coords(state, target_name)
-        if not row:
-            print("[Combat] Орбиту включить нечем: нет иконки Orbit и координат цели")
+        now = time.monotonic()
+        # Фолбэк: если W не сработал N раз — используем иконку Orbit
+        if self._orbit_use_fallback or self._orbit_w_fails >= self.cfg['orbit_w_fallback_threshold']:
+            self._orbit_use_fallback = True
+            if self._click_action(state, 'orbit', off_x, off_y):
+                self._orbit_last_attempt_ts = now
+                self._orbit_pending_check = True
+                self._orbit_check_ts = now + self.cfg['orbit_result_check_time']
+                return True
             return False
-        print(f"[Combat] Орбита через хоткей W + клик по строке овервью "
-              f"({row[0]:.0f},{row[1]:.0f}) '{target_name or '?'}'")
-        pyautogui.press('w')
-        time.sleep(random.uniform(0.15, 0.35))
-        self._click_at(row[0] + off_x, row[1] + off_y)
-        return True
+        if row:
+            rx, ry = row
+            print(f"[Combat] Orbit (W+click) around '{target_name or 'target'}'")
+            # W через keyboard (VK-код) — работает на любой раскладке
+            self._key_down_up('w')
+            time.sleep(0.05)
+            self._click_at(rx + off_x, ry + off_y)
+            self._orbit_last_attempt_ts = now
+            # Помечаем, что нужно проверить результат
+            self._orbit_pending_check = True
+            self._orbit_check_ts = now + self.cfg['orbit_result_check_time']
+            return True
+        # Нет строки — пробуем иконку
+        if self._click_action(state, 'orbit', off_x, off_y):
+            self._orbit_last_attempt_ts = now
+            return True
+        return False
 
     def _ensure_orbit_on_target(self, state, off_x, off_y, now):
         """Контроль орбиты в бою: если орбита слетела — включить заново.
 
-        Статус орбиты берём из HUD-индикации (state.is_orbiting, текст
-        'Orbiting ...' над HUD, см. full_parser.parse_ui_root). Орбита должна
-        быть вокруг атакуемой (активной) цели. Перепроверяем не чаще
-        orbit_recheck_cooldown секунд — индикация обновляется с задержкой,
-        и повторная команда не должна уходить каждый тик.
+        После команды орбиты проверяем результат: если через orbit_result_check_time
+        орбита так и не включилась — увеличиваем счётчик неудач W+LMB. При
+        достижении порога переключаемся на фолбэк (клик по иконке Orbit).
         """
+        # Проверяем результат предыдущей попытки орбиты
+        if self._orbit_pending_check and now >= self._orbit_check_ts:
+            self._orbit_pending_check = False
+            if not getattr(state, 'is_orbiting', False):
+                self._orbit_w_fails += 1
+                print(f"[Combat] Орбита НЕ включилась после W+LMB "
+                      f"(неудача {self._orbit_w_fails}/{self.cfg['orbit_w_fallback_threshold']})")
+                if self._orbit_w_fails >= self.cfg['orbit_w_fallback_threshold']:
+                    self._orbit_use_fallback = True
+                    print("[Combat] Переключаюсь на фолбэк: клик по иконке Orbit")
+            else:
+                # Орбита включилась — сбрасываем счётчик
+                self._orbit_w_fails = 0
+
         if state.is_orbiting:
             return
         if now - self._last_orbit_fix_ts < self.cfg['orbit_recheck_cooldown']:
             self._vlog_throttled('c_orbitwait', "combat: орбиты нет в индикации — жду перед повторным включением")
             return
         self._last_orbit_fix_ts = now
-        active = state.active_target or (state.targets or [{}])[0]
+        # Орбита — вокруг цели в ФОКУСЕ (атакуемой), а не любой активной
+        focus_t = None
+        if self._focus_name:
+            for t in (state.targets or []):
+                if str(t.get('name') or '') == self._focus_name:
+                    focus_t = t
+                    break
+        active = focus_t or state.active_target or (state.targets or [{}])[0]
         tname = str(active.get('name') or '') if isinstance(active, dict) else ''
         print(f"[Combat] Орбита выключилась — включаю заново вокруг "
               f"{tname or 'атакуемой цели'}")
@@ -674,151 +876,242 @@ class EveBot:
                 self._last_attack_press = now
             return   # один слот за тик
 
-    def _focus_fire(self, state, off_x, off_y, now):
-        """Focus fire: активной целью держим самую приоритетную из захваченных.
+    def _focus_maintain(self, state, off_x, off_y, now):
+        """Фокус: одна захваченная цель = атакуемая цель (пушки + дроны).
 
-        Приоритет: NPC-фрегаты (носители скрамов) -> остальные по дистанции.
-        Клик по строке цели в панели лока делает её активной.
+        Фокус ставится на первую захваченную цель (см. _target_fsm) и НЕ
+        меняется, пока она жива — пушки и дроны бьют одну цель. Переключение
+        только после уничтожения цели в фокусе: берём следующую захваченную
+        (фрегаты приоритетнее как скрам-угроза), кликом по её строке делаем
+        её активной, включаем орбиту вокруг неё и посылаем дроны (F).
         """
-        cmap = self._npc_class_map(state)
         locked = list(state.targets or [])
         if not locked:
+            self._focus_name = None
             return
+        names = [str(t.get('name') or '') for t in locked]
+        if self._focus_name and self._focus_name in names:
+            return  # фокус жив — целимся в ту же цель, ничего не делаем
+        if now - self._last_lock_action_ts < self.cfg['focus_switch_cooldown']:
+            return
+        cmap = self._npc_class_map(state)
 
         def _score(t):
             return (0 if self._target_is_frigate(t, cmap) else 1,
                     float(t.get('distance') or 0.0))
-        focus = min(locked, key=_score)
-        active = state.active_target
-        if (active is None or focus is not active) and \
-           now - self._last_lock_action_ts >= self.cfg['focus_switch_cooldown']:
-            self._click_target_row(focus, off_x, off_y)
-            self._last_lock_action_ts = now
+        nxt = min(locked, key=_score)
+        self._focus_name = str(nxt.get('name') or '')
+        dist = float(nxt.get('distance') or 0.0)
+        print(f"[Bot] Фокус -> {self._focus_name or 'Target'} ({dist:.0f} m) — "
+              f"орбита + дроны")
+        # Клик по строке цели в панели лока — делает её активной
+        self._click_target_row(nxt, off_x, off_y)
+        self._last_lock_action_ts = now
+        # Орбита вокруг новой цели (force: индикация ещё показывает старую)
+        self._enable_orbit(state, off_x, off_y,
+                           target_name=self._focus_name or None, force=True)
+        # Дроны атакуют новую цель фокуса
+        if self.use_drones and state.drones_in_space > 0:
+            print(f"[Bot] Дроны -> новая цель фокуса ({self._focus_name or 'Target'})")
+            pyautogui.press('f')
 
     def _target_fsm(self, state, off_x, off_y, now):
-        """Боевой цикл против NPC: захват пакетами по N целей.
+        """Боевой цикл против NPC: пайплайн прилёта в аномалию.
 
-        Пока корабль в варпе FSM заморожена. Прилёт -> выбор первой цели ->
-        орбита -> пакетный захват (Ctrl+клик по 1-й, 2-й, 3-й до lock_batch_size)
-        -> атака до уничтожения.
+        Пока корабль в варпе FSM заморожена. После выхода из варпа — пауза
+        warp_exit_settle (статус корабля в дампе ещё обновляется), затем:
+
+          1. LOCK_FIRST     — захват ПЕРВОЙ цели (Ctrl+LMB), она же фокус
+          2. ORBIT_FIRST    — орбита вокруг ЭТОЙ ЖЕ цели (W+LMB)
+          3. DRONES_LAUNCH  — выпуск дронов (Shift+F) и атака (F) цели фокуса
+          4. LOCK_REST      — захват остальных целей пакета (Ctrl+LMB,
+                              пауза lock_batch_delay между кликами)
+          5. LOCK_WAIT      — ждём локи
+          6. ATTACK         — бой; фокус = захваченная цель; после её
+                              уничтожения переключение на следующую захваченную
+                              (фокус -> орбита -> дроны F), см. _focus_maintain
 
         Сколько целей захватывать:
           - если в овервью >= lock_batch_size (3) — захватываем ровно 3
           - если меньше — все доступные
         Приоритет кандидатов: фрегаты (скрам-угроза) -> остальные по дистанции.
-
-        Approach НЕ используется. Если пакет не удалось захватать — повторяем
-        с той же орбитой; после lock_max_attempts неудач цель исключается.
+        Approach НЕ используется.
         """
         # Во время варпа захват цели не начинаем
         if state.is_warp:
+            self._just_exited_warp = True
             self._vlog_throttled('fsm_warp', "combat: варп — захват цели отложен")
             return
 
-        # Цели уже захвачены — атакуем (переход из любого состояния)
-        if state.targets:
-            if self._combat_step != 'ATTACK':
+        # Только что вышли из варпа: пауза на полное обновление статуса
+        # корабля в дампе (is_warp/speed ещё "догоняют") — иначе клики мимо.
+        if self._just_exited_warp:
+            self._just_exited_warp = False
+            self._combat_start_ts = now
+            print(f"[Combat] Выход из варпа — жду стабилизации статуса "
+                  f"({self.cfg['warp_exit_settle']:.0f} с) перед боем")
+        if (self._combat_start_ts > 0 and
+                now - self._combat_start_ts < self.cfg['warp_exit_settle']):
+            self._vlog_throttled('c_arrive',
+                                 f"combat: прилёт — жду стабилизации ещё "
+                                 f"{self.cfg['warp_exit_settle'] - (now - self._combat_start_ts):.1f} с")
+            return
+
+        # Проверка результата попытки включения орбиты:
+        # если прошло > orbit_result_check_time и орбита так и не включилась —
+        # увеличиваем счётчик неудач W+LMB (фолбэк на иконку Orbit)
+        if (not state.is_orbiting and self._orbit_last_attempt_ts > 0 and
+                now - self._orbit_last_attempt_ts > self.cfg['orbit_result_check_time']):
+            self._orbit_last_attempt_ts = 0.0  # сбрасываем, чтобы не считать повторно
+            self._orbit_w_fails += 1
+            print(f"[Combat] Орбита не включилась (попытка W+LMB #{self._orbit_w_fails})")
+
+        # Контроль орбиты на боевых шагах с захваченными целями (кроме
+        # ORBIT_FIRST/DRONES_LAUNCH — там команда орбиты только что была)
+        if (state.targets and
+                self._combat_step not in ('IDLE', 'ORBIT_FIRST', 'DRONES_LAUNCH')):
+            self._ensure_orbit_on_target(state, off_x, off_y, now)
+
+        step = self._combat_step
+
+        if step == 'IDLE':
+            if state.targets:
+                # Локи уже есть (продолжение боя) — фокус на первую, атака
+                self._focus_name = str((state.targets[0] or {}).get('name') or '')
                 self._combat_step = 'ATTACK'
                 self._lock_attempts = 0
                 self._lock_batch_remaining = 0
                 self._lock_queue = []
                 self._last_orbit_fix_ts = now
-                print(f"[Combat] {len(state.targets)} целей захвачено! Атакую до уничтожения.")
-            # Контроль орбиты: слетела — включаем заново вокруг атакуемой цели
-            self._ensure_orbit_on_target(state, off_x, off_y, now)
-            return
-
-        if not state.npc_all:
-            return
-
-        step = self._combat_step
-        cand = self._lock_candidates(state)
-
-        if step in ('ATTACK', 'IDLE'):
+                print(f"[Combat] {len(state.targets)} целей в локе — атакую.")
+                return
+            if not state.npc_all:
+                return
+            cand = self._lock_candidates(state)
             if not cand:
                 return
-            # Формируем пакет целей: до lock_batch_size, но не больше чем есть
             batch_size = min(self.cfg['lock_batch_size'], len(cand))
             self._lock_queue = list(cand[:batch_size])
-            self._lock_batch_remaining = len(self._lock_queue)
             lx, ly = self._lock_queue[0]
             self._current_target_coords = (lx, ly)
-            print(f"[Combat] Выбираю цель 1/{len(self._lock_queue)} из овервью "
-                  f"(пакет на {len(self._lock_queue)} целей)")
-            self._click_at(lx + off_x, ly + off_y)
-            self._combat_step = 'SELECT'
+            self._lock_attempts = 1
+            print(f"[Combat] Захват цели 1/{len(self._lock_queue)} (Ctrl+клик) — "
+                  f"она же цель фокуса")
+            self._ctrl_click_at(lx, ly, off_x, off_y)
+            self._combat_step = 'LOCK_FIRST'
             self._step_ts = now
 
-        elif step == 'SELECT':
-            if now - self._step_ts >= self.cfg['select_wait']:
-                # ОРБИТА первой цели из пакета
-                self._enable_orbit(state, off_x, off_y)
-                self._combat_step = 'ORBIT'
+        elif step == 'LOCK_FIRST':
+            if state.targets:
+                # Первый лок получен — эта цель становится фокусом
+                self._focus_name = str((state.targets[0] or {}).get('name') or '')
+                print(f"[Combat] Цель в локе: {self._focus_name or 'Target'} — фокус")
+                self._combat_step = 'ORBIT_FIRST'
+                self._step_ts = now
+            elif not state.npc_all:
+                self._lock_queue = []
+                self._lock_attempts = 0
+                self._combat_step = 'IDLE'
+            elif now - self._step_ts >= self.cfg['lock_timeout']:
+                if self._lock_attempts >= self.cfg['lock_max_attempts'] or not self._lock_queue:
+                    print("[Combat] Первый лок не сработал — исключаю пакет, начинаю заново")
+                    for c in self._lock_queue:
+                        self._skip_coords[c] = time.time()
+                    self._lock_queue = []
+                    self._lock_attempts = 0
+                    self._combat_step = 'IDLE'
+                else:
+                    self._lock_attempts += 1
+                    lx, ly = self._lock_queue[0]
+                    print(f"[Combat] Повтор захвата цели 1 "
+                          f"({self._lock_attempts}/{self.cfg['lock_max_attempts']}, Ctrl+клик)")
+                    self._ctrl_click_at(lx, ly, off_x, off_y)
+                    self._step_ts = now
+
+        elif step == 'ORBIT_FIRST':
+            # Орбита вокруг ЭТОЙ ЖЕ захваченной цели (force: индикация is_orbiting
+            # ещё может не обновиться, но команда нужна именно по цели фокуса)
+            locked0 = (state.targets or [{}])[0]
+            tname = str(locked0.get('name') or '') if isinstance(locked0, dict) else ''
+            if not state.is_orbiting and \
+               now - self._last_orbit_fix_ts >= self.cfg['orbit_recheck_cooldown']:
+                print(f"[Combat] Орбита вокруг цели фокуса ({tname or 'Target'}, W+клик)")
+                self._enable_orbit(state, off_x, off_y,
+                                   target_name=tname or None, force=True)
+            if now - self._step_ts >= self.cfg['orbit_wait']:
+                self._combat_step = 'DRONES_LAUNCH'
                 self._step_ts = now
 
-        elif step == 'ORBIT':
-            if now - self._step_ts >= self.cfg['orbit_wait']:
-                # ПАКЕТНЫЙ ЗАХВАТ: Ctrl+клик по первой цели
-                if self._lock_queue:
-                    lx, ly = self._lock_queue[0]
-                    print(f"[Combat] Пакетный захват: цель 1/{len(self._lock_queue)} "
-                          f"(Ctrl+клик)")
-                    pyautogui.keyDown('ctrl')
-                    self._click_at(lx + off_x, ly + off_y)
-                    pyautogui.keyUp('ctrl')
-                    self._lock_batch_remaining = len(self._lock_queue) - 1
-                    self._lock_attempts += 1
-                    self._combat_step = 'LOCK_BATCH'
+        elif step == 'DRONES_LAUNCH':
+            # Выпуск дронов и атака цели фокуса
+            if not self.use_drones:
+                self._combat_step = 'LOCK_REST'
+                self._lock_batch_remaining = max(0, len(self._lock_queue) - 1)
+                self._lock_batch_ts = now
+            else:
+                if state.drones_in_bay > 0 and state.drones_in_space == 0:
+                    print("[Bot] Выпускаю дронов (Shift+F) — атакуют цель фокуса")
+                    self._press_shift('f')
+                    time.sleep(5)
+                elif state.drones_in_space > 0 and not state.drones_fighting:
+                    print(f"[Bot] Дроны в атаку на {self._focus_name or 'цель фокуса'}! (F)")
+                    pyautogui.press('f')
+                    time.sleep(1)
+                launched = state.drones_in_space > 0 and state.drones_fighting
+                if launched or now - self._step_ts >= self.cfg['drone_launch_wait']:
+                    self._combat_step = 'LOCK_REST'
+                    self._lock_batch_remaining = max(0, len(self._lock_queue) - 1)
                     self._lock_batch_ts = now
 
-        elif step == 'LOCK_BATCH':
-            # Захватываем оставшиеся цели из пакета с небольшой паузой
-            if self._lock_batch_remaining > 0 and self._lock_queue:
+        elif step == 'LOCK_REST':
+            # Захват остальных целей пакета (2-й, 3-й) с паузой между кликами
+            if self._lock_batch_remaining > 0 and len(self._lock_queue) > 1:
                 if now - self._lock_batch_ts >= self.cfg['lock_batch_delay']:
                     idx = len(self._lock_queue) - self._lock_batch_remaining
                     if idx < len(self._lock_queue):
                         lx, ly = self._lock_queue[idx]
-                        print(f"[Combat] Пакетный захват: цель {idx+1}/{len(self._lock_queue)} "
+                        print(f"[Combat] Захват цели {idx+1}/{len(self._lock_queue)} "
                               f"(Ctrl+клик)")
-                        pyautogui.keyDown('ctrl')
-                        self._click_at(lx + off_x, ly + off_y)
-                        pyautogui.keyUp('ctrl')
+                        self._ctrl_click_at(lx, ly, off_x, off_y)
                         self._lock_batch_remaining -= 1
                         self._lock_batch_ts = now
             else:
-                # Все цели из пакета обработаны — ждём локов
                 self._combat_step = 'LOCK_WAIT'
                 self._step_ts = now
 
         elif step == 'LOCK_WAIT':
             locked_count = len(state.targets or [])
-            if locked_count > 0:
+            if locked_count >= len(self._lock_queue):
                 self._combat_step = 'ATTACK'
                 self._lock_attempts = 0
                 self._lock_queue = []
                 self._last_orbit_fix_ts = now
-                print(f"[Combat] Захвачено {locked_count} целей! Атакую до уничтожения.")
+                print(f"[Combat] Пакет захвачен ({locked_count} целей)! Атакую.")
             elif now - self._step_ts >= self.cfg['lock_timeout']:
-                if self._lock_attempts >= self.cfg['lock_max_attempts']:
-                    print("[Combat] Лок так и не сработал — исключаю цели, беру следующий пакет")
-                    for c in self._lock_queue:
-                        self._skip_coords[c] = time.time()
+                if locked_count > 0:
+                    print(f"[Combat] Захвачено {locked_count} из "
+                          f"{len(self._lock_queue)} — атакую тем, что есть")
+                    self._combat_step = 'ATTACK'
                     self._lock_attempts = 0
                     self._lock_queue = []
-                    self._combat_step = 'IDLE'
                 else:
-                    print(f"[Combat] Цели вне зоны захвата, попытка "
-                          f"{self._lock_attempts}/{self.cfg['lock_max_attempts']} — "
-                          f"держу орбиту, повторяю пакетный захват")
-                    self._enable_orbit(state, off_x, off_y)
-                    self._combat_step = 'ORBIT'
-                    self._step_ts = now
+                    print("[Combat] Локи слетели — новый заход по оставшимся NPC")
+                    self._lock_queue = []
+                    self._lock_attempts = 0
+                    self._combat_step = 'IDLE'
             else:
                 self._vlog_throttled('c_lock',
                                      f"combat: жду лок пакета ещё "
                                      f"{self.cfg['lock_timeout'] - (now - self._step_ts):.1f} с "
                                      f"(попытка {self._lock_attempts}/"
                                      f"{self.cfg['lock_max_attempts']})")
+
+        elif step == 'ATTACK':
+            if not state.targets:
+                # Все захваченные цели уничтожены — новый пайплайн по оставшимся
+                print("[Combat] Все захваченные цели уничтожены — новый заход по NPC")
+                self._focus_name = None
+                self._combat_step = 'IDLE'
 
     def _click_target_row(self, target, off_x, off_y):
         """Клик по строке цели в панели лока — делает её активной (фокус огня)."""
@@ -839,6 +1132,22 @@ class EveBot:
         time.sleep(random.uniform(0.2, 0.5))
 
         # в) Дроны обрабатываются в _drone_combat_cycle (см. выше)
+
+    def _ctrl_click_at(self, lx, ly, off_x, off_y):
+        """Захват цели: Ctrl + LMB клик по строке овервью с паузами.
+
+        Ctrl зажимается ДО клика с паузой ctrl_click_pause — иначе EVE не
+        успевает зарегистрировать модификатор и клик проходит как обычный
+        (цель выделяется, но не захватывается в лок). Пауза после клика —
+        чтобы захват успел обработаться до отпускания Ctrl / следующего
+        действия. Без паузы между ctrl+кликами пакета захватываются не все
+        цели (клик не попадает в тик сервера).
+        """
+        pyautogui.keyDown('ctrl')
+        time.sleep(self.cfg['ctrl_click_pause'])
+        self._click_at(lx + off_x, ly + off_y)
+        time.sleep(self.cfg['ctrl_click_pause'])
+        pyautogui.keyUp('ctrl')
 
     # ==================== ДРОНЫ: ЦИКЛ ВЫЖИВАНИЯ ====================
 
@@ -1187,7 +1496,8 @@ class EveBot:
             # закроет меню, а не выключит модуль.
             self._disable_engine(state, off_x, off_y, now)
             anom = candidates[0]
-            ax = (anom.get('x') or 0) + off_x + 40
+            # Клик по имени аномалии (левая часть строки), НЕ по distance (правая часть)
+            ax = (anom.get('x') or 0) + off_x + 10
             ay = (anom.get('y') or 0) + off_y + max(8, (anom.get('h') or 16) // 2)
             print(f"[Mission] Аномалия '{anom.get('name') or anom.get('id')}' "
                   f"({anom.get('group')}) — открываю меню (ПКМ по строке сканера)")
