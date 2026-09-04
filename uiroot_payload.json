@@ -1,8 +1,8 @@
 {
   "meta": {
     "schema_version": 1,
-    "timestamp": 1788463115.19,
-    "datetime": "2026-09-03 22:18:35",
+    "timestamp": 1788465008.793,
+    "datetime": "2026-09-03 22:50:08",
     "window": {
       "width": 1497,
       "height": 1001
@@ -167,108 +167,7 @@
       "icon": "res:/UI/Texture/Shared/Brackets/sun.png"
     }
   ],
-  "selected_item": {
-    "name": "WAC-HW - This is totally WAC",
-    "distance": 0.0,
-    "is_target": false,
-    "icon": "res:/dx9/model/deployables/generic/citadel/m/cm1/icons/21137_64.png",
-    "x": 1016,
-    "y": 0,
-    "w": 481,
-    "h": 140,
-    "actions": [
-      {
-        "name": "selectedItemApproach",
-        "action": "Approach",
-        "x": 1026,
-        "y": 98,
-        "w": 32,
-        "h": 32,
-        "icon": "res:/UI/Texture/eveicon/control_icons/approach_32px.png"
-      },
-      {
-        "name": "selectedItemWarpTo",
-        "action": "Warp To",
-        "x": 1062,
-        "y": 98,
-        "w": 32,
-        "h": 32,
-        "icon": "res:/UI/Texture/eveicon/control_icons/warp_to_32px.png"
-      },
-      {
-        "name": "selectedItemDock",
-        "action": "Dock",
-        "x": 1098,
-        "y": 98,
-        "w": 32,
-        "h": 32,
-        "icon": "res:/UI/Texture/eveicon/control_icons/dock_32px.png"
-      },
-      {
-        "name": "selectedItemAccessDropbox",
-        "action": "Access Dropbox",
-        "x": 1134,
-        "y": 98,
-        "w": 32,
-        "h": 32,
-        "icon": "res:/UI/Texture/eveicon/control_icons/open_cargo_32px.png"
-      },
-      {
-        "name": "selectedItemOrbit",
-        "action": "Orbit",
-        "x": 1170,
-        "y": 98,
-        "w": 32,
-        "h": 32,
-        "icon": "res:/UI/Texture/eveicon/control_icons/orbit_32px.png"
-      },
-      {
-        "name": "selectedItemKeepAtRange",
-        "action": "Keep at Range",
-        "x": 1206,
-        "y": 98,
-        "w": 32,
-        "h": 32,
-        "icon": "res:/UI/Texture/eveicon/control_icons/keep_at_distance_32px.png"
-      },
-      {
-        "name": "selectedItemLockTarget",
-        "action": "Lock Target",
-        "x": 1242,
-        "y": 98,
-        "w": 32,
-        "h": 32,
-        "icon": "res:/UI/Texture/eveicon/control_icons/target_32px.png"
-      },
-      {
-        "name": "selectedItemLookAt",
-        "action": "Look At",
-        "x": 1278,
-        "y": 98,
-        "w": 32,
-        "h": 32,
-        "icon": "res:/UI/Texture/eveicon/control_icons/look_at_32px.png"
-      },
-      {
-        "name": "selectedItemSetInterest",
-        "action": "Set Interest",
-        "x": 1314,
-        "y": 98,
-        "w": 32,
-        "h": 32,
-        "icon": "res:/UI/Texture/eveicon/control_icons/camera_track_32px.png"
-      },
-      {
-        "name": "selectedItemShowInfo",
-        "action": "Show Info",
-        "x": 1350,
-        "y": 98,
-        "w": 32,
-        "h": 32,
-        "icon": "res:/UI/Texture/eveicon/control_icons/show_info_32px.png"
-      }
-    ]
-  },
+  "selected_item": null,
   "scanner": [
     {
       "id": "BPN-552",
@@ -292,7 +191,7 @@
     "buttons": [
       {
         "name": "mail",
-        "has_notification": true,
+        "has_notification": false,
         "notification_count": 0
       },
       {
@@ -313,7 +212,7 @@
       {
         "name": "chat",
         "has_notification": true,
-        "notification_count": 0
+        "notification_count": 1
       },
       {
         "name": "assets",
@@ -341,7 +240,7 @@
         "notification_count": 0
       }
     ],
-    "clock": "18:57"
+    "clock": "19:30"
   },
   "executor": {
     "combat_mode": "IDLE",

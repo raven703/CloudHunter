@@ -45,6 +45,8 @@ class EveBot:
             'arrival_settle_time': 15.0,        # пауза после варпа (овервью прогружается), сек
             'modal_enter_attempts': 2,          # сколько раз жать Enter у модалки Information, прежде чем кликать Close
             'orbit_recheck_cooldown': 6.0,      # как часто в бою перепроверять орбиту (сек), чтобы не задваивать команду
+            'prop_keep_off_time': 25.0,         # окно "двигатель выключен перед варпом" (сек): меню варпа + старт варпа
+            'repair_missing_warn_interval': 60.0,  # как часто предупреждать, если модуля ремонта нет (сек)
         }
 
         # --- Микро-FSM дронов: FIGHTING | RECALLING | COOLDOWN ---
@@ -63,6 +65,7 @@ class EveBot:
         self._recent_keys = {}           # защита от двойного нажатия (выключит модуль)
         self._last_orbit_fix_ts = 0.0    # последнее повторное включение орбиты (контроль в бою)
         self._module_click_ts = {}       # слот -> ts последнего клика по модулю HUD (анти-даблклик)
+        self._prop_keep_off_ts = 0.0     # ts выключения двигателя перед варпом (окно "не включать обратно")
 
         # --- Модальное окно Information (всплывает после варпа): закрытие Enter -> клик Close ---
         self._modal_attempts = 0
@@ -88,6 +91,13 @@ class EveBot:
         self._had_npcs = False
         self._drone_baseline = None      # сколько дронов было (для детекта потерь)
         self._low_drones_alerted = False
+
+        # --- Кооперативная остановка (кнопка STOP / Ctrl+Shift+S) ---
+        self._stop_requested = False
+
+        # --- Контроль модуля ремонта (предупреждение, если репки нет) ---
+        self._was_docked = False         # был ли корабль в доке на прошлом тике
+        self._repair_missing_warn_ts = 0.0
 
         # Статистика сессии: bot обновляет, GUI читает
         self.stats = stats if stats is not None else {
@@ -140,7 +150,19 @@ class EveBot:
             self._vlog_keys[key] = now
             print(f"[V] {msg}")
 
+    def request_stop(self):
+        """Запрос остановки бота (кнопка STOP / Ctrl+Shift+S).
+
+        Флаг проверяется в начале think() и между фазами: текущее действие
+        (клик/пауза) завершается, новых действий бот не предпринимает.
+        """
+        self._stop_requested = True
+        print("[Bot] STOP: завершаю текущие действия, новые не начинаю")
+
     def think(self, state, use_drones: bool):
+        # Запрос STOP (кнопка / Ctrl+Shift+S) — немедленный выход из тика
+        if self._stop_requested:
+            return
         self.current_state = state
         self.use_drones = use_drones
 
@@ -206,6 +228,8 @@ class EveBot:
         #    в бою) — кроме дока и экрана загрузки.
         off_x, off_y = self._get_offset()
         self._ensure_modules_on(state, off_x, off_y, time.monotonic())
+        if self._stop_requested:
+            return
 
         # 2. ПРИОРИТЕТ: БЕЗОПАСНОСТЬ
         if state.local_has_hostile or state.local_has_neutral:
@@ -214,6 +238,8 @@ class EveBot:
             return
 
         # 3. БОЕВАЯ ЛОГИКА
+        if self._stop_requested:
+            return
         if state.npc_all:
             self.no_targets_timer = None
             state.combat_mode_active = "COMBAT"
@@ -254,9 +280,29 @@ class EveBot:
         Модуль включается КЛИКОМ по его иконке в HUD: у средних и нижних
         слотов нет дефолтных хоткеев (F1..F8 только у высоких). Повторный
         клик защищён кулдауном — повторное нажатие ВЫКЛЮЧАЕТ модуль.
+
+        Двигатель не включается обратно в окне prop_keep_off_time после
+        его выключения перед варпом (см. _disable_engine) — иначе
+        автоконтроль отменит подготовку к варпу.
         """
         if getattr(state, 'is_docked', False) or getattr(state, 'is_loading', False):
+            self._was_docked = True
             return
+
+        # Задача: контроль модуля ремонта, когда корабль НЕ в доке.
+        #   - репка есть и READY -> включается выше (клик по иконке);
+        #   - репки нет вообще -> предупреждение в лог: сразу после андока
+        #     (переход docked -> undocked) и далее не чаще
+        #     repair_missing_warn_interval секунд.
+        repairers = getattr(state, 'repairers', {}) or {}
+        is_docked = getattr(state, 'is_docked', False)
+        if not repairers:
+            undocked_now = self._was_docked and not is_docked
+            if undocked_now or now - self._repair_missing_warn_ts >= self.cfg.get('repair_missing_warn_interval', 60.0):
+                self._repair_missing_warn_ts = now
+                print("[Bot][WARNING] Модуль ремонта не найден (REPAIR: NOT FOUND) — "
+                      "проверь фит: чинить некому, контроль репки невозможен")
+        self._was_docked = is_docked
 
         # 1. Репка — всегда включена (кроме дока, работает и в варпе)
         for name, status in (getattr(state, 'repairers', {}) or {}).items():
@@ -266,8 +312,13 @@ class EveBot:
                 print(f"[Bot] Репка {name} выключена — включаю (клик по иконке)")
                 return   # один модуль за тик, остальное — на следующих тиках
 
-        # 2. Двигатель (afterburner/MWD) — всегда включён вне варпа
-        if getattr(state, 'is_warp', False):
+        # 2. Двигатель (afterburner/MWD) — всегда включён вне варпа, КРОМЕ:
+        #    - самого варпа/выхода на варп (is_warp/is_establishing);
+        #    - окна после выключения двигателя перед варпом (_disable_engine).
+        if getattr(state, 'is_warp', False) or getattr(state, 'is_establishing', False):
+            return
+        if now - self._prop_keep_off_ts < self.cfg['prop_keep_off_time']:
+            self._vlog("modules: двигатель выключен перед варпом — не включаю обратно")
             return
         for name, status in (getattr(state, 'prop_modules', {}) or {}).items():
             if status != 'READY':
@@ -275,6 +326,24 @@ class EveBot:
             if self._toggle_hud_module(state, name, off_x, off_y, now):
                 print(f"[Bot] Двигатель {name} выключен — включаю (клик по иконке)")
                 return
+
+    def _disable_engine(self, state, off_x, off_y, now):
+        """Выключить двигатель (afterburner/MWD) перед уходом в варп.
+
+        Вызывается ДО открытия контекстного меню с warp-командой: клик по
+        модулю HUD при открытом меню просто закроет меню. Успешное
+        выключение открывает окно prop_keep_off_time, в течение которого
+        _ensure_modules_on не включает двигатель обратно (статус в дампе
+        обновляется с задержкой).
+        """
+        for name, status in (getattr(state, 'prop_modules', {}) or {}).items():
+            if status != 'ACTIVE':
+                continue
+            if self._toggle_hud_module(state, name, off_x, off_y, now):
+                self._prop_keep_off_ts = now
+                print(f"[Bot] Двигатель {name} выключаю перед варпом (клик по иконке)")
+                return True
+        return False
 
     def _toggle_hud_module(self, state, slot_name, off_x, off_y, now):
         """Клик по иконке модуля в HUD по имени слота. True = клик сделан.
@@ -323,6 +392,8 @@ class EveBot:
         return True
 
     def _combat_logic(self):
+        if self._stop_requested:
+            return
         state = self.current_state
         off_x, off_y = self._get_offset()
         now = time.monotonic()
@@ -423,12 +494,18 @@ class EveBot:
     def _enable_orbit(self, state, off_x, off_y, target_name=None):
         """Включить орбиту вокруг цели.
 
+        Если статус orbiting уже активен — команду НЕ дублируем: повторная
+        команда орбиты сбрасывает текущую (корабль начинает кружить заново).
+
         Способы (по приоритету):
           1) иконка Orbit в окне выбранного объекта (клик курсором);
           2) хоткей W + клик по строке цели в овервью (W+LMB) — если иконки
              нет (окно выбранного объекта не распарсилось / кнопки нет).
         Цель: атакуемая (target_name) либо последняя выбранная строка.
         """
+        if getattr(state, 'is_orbiting', False):
+            self._vlog("orbit: статус orbiting уже активен — команду не дублирую")
+            return True
         if self._click_action(state, 'orbit', off_x, off_y):
             return True
         row = self._overview_row_coords(state, target_name)
@@ -849,6 +926,10 @@ class EveBot:
         """
         now = time.time()
 
+        # Запрос STOP — миссию не продолжаем
+        if self._stop_requested:
+            return
+
         if state.is_docked or state.is_loading:
             self._vlog_throttled('m_dock', f"mission skip: docked={state.is_docked} "
                                            f"loading={state.is_loading}")
@@ -902,6 +983,10 @@ class EveBot:
         off_x, off_y = self._get_offset()
 
         if self._mission == 'IDLE':
+            # Перед любым уходом в варп глушим двигатель. ВАЖНО: до открытия
+            # меню — клик по модулю HUD при открытом контекстном меню просто
+            # закроет меню, а не выключит модуль.
+            self._disable_engine(state, off_x, off_y, now)
             anom = candidates[0]
             ax = (anom.get('x') or 0) + off_x + 40
             ay = (anom.get('y') or 0) + off_y + max(8, (anom.get('h') or 16) // 2)

@@ -669,6 +669,37 @@ bot.think(state, use_drones=True)
 assert 'w' not in pressed_keys(), "в пределах кулдауна команду орбиты не повторяем"
 print("15f) кулдаун после захвата цели -> дубль команды орбиты не уходит")
 
+# 15g: статус orbiting УЖЕ активен — команда орбиты НЕ дублируется
+# (проверяем на пути повтора лока: LOCK-таймаут -> орбита -> лок)
+state.targets = []
+state.active_target = None
+state.npc_all = [(620.0, 410.0)]
+bot._combat_step = 'LOCK'
+bot._step_ts -= 10          # lock_timeout прошёл
+bot._lock_attempts = 1
+state.is_orbiting = True    # орбита уже включена
+reset_mock()
+bot.think(state, use_drones=True)
+assert bot._combat_step == 'ORBIT', "после таймаута лока — снова ORBIT"
+assert pressed_keys() == [], f"орбита уже активна — команду не дублируем, а не {pressed_keys()}"
+moves = [c.args for c in pag.moveTo.call_args_list if c.args]
+assert not moves, f"при активной орбите кликов быть не должно, got {moves}"
+assert bot._lock_attempts == 1
+print("15g) is_orbiting=True -> команда орбиты не дублируется")
+
+# 15h: орбита слетела (is_orbiting=False) -> включается заново
+state.is_orbiting = False
+bot._combat_step = 'LOCK'
+bot._step_ts -= 10
+bot._lock_attempts = 1
+reset_mock()
+bot.think(state, use_drones=True)
+assert 'w' in pressed_keys(), "орбита слетела — включаем заново (W)"
+moves = [c.args for c in pag.moveTo.call_args_list if c.args]
+assert any(600 <= m[0] <= 660 and 400 <= m[1] <= 420 for m in moves), \
+    f"повторная орбита вокруг выбранной цели (620,410), got {moves}"
+print("15h) is_orbiting=False -> орбита включается заново")
+
 # ===== 16. МОДУЛИ: РЕПКА И ДВИГАТЕЛЬ ВСЕГДА ВКЛЮЧЕНЫ =====
 print("\n--- 16. Контроль модулей (репка + двигатель) ---")
 
@@ -737,5 +768,76 @@ reset_mock()
 bot.think(st16, use_drones=True)
 assert not pag.moveTo.call_args_list, "активные модули кликов не требуют"
 print("16f) модули ACTIVE -> контроля кликов нет")
+
+# 16g: перед уходом в варп двигатель ВЫКЛЮЧАЕТСЯ кликом
+st16.is_docked = False
+st16.is_warp = False
+st16.repairers = {'inFlightLowSlot1': 'ACTIVE'}
+st16.prop_modules = {'inFlightMediumSlot1': 'ACTIVE'}
+bot._module_click_ts.clear()
+bot._prop_keep_off_ts = 0.0
+reset_mock()
+bot._disable_engine(st16, 0, 0, time.monotonic())
+moves = [c.args for c in pag.moveTo.call_args_list if c.args]
+assert any(1170 <= m[0] <= 1205 and 965 <= m[1] <= 978 for m in moves), \
+    f"двигатель ACTIVE -> клик по иконке для выключения, got {moves}"
+assert bot._prop_keep_off_ts > 0, "должно открыться окно 'не включать обратно'"
+print("16g) двигатель ACTIVE перед варпом -> клик выключения")
+
+# 16h: в окне keep-off автоконтроль двигатель обратно НЕ включает
+st16.prop_modules = {'inFlightMediumSlot1': 'READY'}   # статус ещё не обновился в дампе
+reset_mock()
+bot._ensure_modules_on(st16, 0, 0, time.monotonic())
+moves = [c.args for c in pag.moveTo.call_args_list if c.args]
+assert not any(960 <= m[1] <= 980 for m in moves), \
+    "в окне keep-off двигатель обратно не включаем"
+print("16h) keep-off после выключения -> автоконтроль не включает двигатель")
+
+# 16i: обычный автоконтроль: READY-двигатель вне варпа включается
+st16r = ParsedUIState()
+st16r.prop_modules = {'inFlightMediumSlot1': 'READY'}
+st16r.medium_slots = st16.medium_slots
+st16r.is_docked = False
+st16r.is_warp = False
+st16r.is_loading = False
+bot._module_click_ts.clear()
+bot._prop_keep_off_ts = 0.0
+reset_mock()
+bot._ensure_modules_on(st16r, 0, 0, time.monotonic())
+moves = [c.args for c in pag.moveTo.call_args_list if c.args]
+assert any(1170 <= m[0] <= 1205 and 965 <= m[1] <= 978 for m in moves), \
+    "двигатель READY вне варпа -> включаем кликом"
+print("16i) READY-двигатель вне варпа -> включается")
+
+# 16j: полный сценарий варпа: перед ПКМ по аномалии двигатель выключается,
+# затем открывается меню (ПКМ по строке сканера)
+st16e = ParsedUIState()
+st16e.prop_modules = {'inFlightMediumSlot1': 'ACTIVE'}
+st16e.medium_slots = st16.medium_slots
+st16e.repairers = {}
+st16e.is_docked = False
+st16e.is_warp = False
+st16e.is_loading = False
+st16e.scan_results = [
+    {'id': 'DPT-665', 'name': 'Sansha Den', 'group': 'Combat Site', 'type': 'combat',
+     'signal': 0.0, 'x': 500, 'y': 300, 'h': 24},
+]
+bot._mission = 'IDLE'
+bot._visited_anoms.clear()
+bot._current_anom = None
+bot._arrival_ts = 0.0
+bot._module_click_ts.clear()
+bot._prop_keep_off_ts = 0.0
+reset_mock()
+bot.think(st16e, use_drones=True)
+moves = [c.args for c in pag.moveTo.call_args_list if c.args]
+# сначала выключение двигателя (иконка модуля ~(1170,970))...
+assert any(1170 <= m[0] <= 1205 and 965 <= m[1] <= 978 for m in moves), \
+    f"перед варпом двигатель должен быть выключен, got {moves}"
+# ...затем ПКМ по строке аномалии
+rights = [c for c in pag.click.call_args_list if c.kwargs.get('button') == 'right']
+assert len(rights) == 1, "аномалия: ПКМ по строке сканера"
+assert bot._mission == 'MENU_WAIT'
+print("16j) перед ПКМ по аномалии двигатель выключен, меню открыто")
 
 print("\nALL BOT INTEGRATION ASSERTIONS PASSED")

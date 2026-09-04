@@ -7,8 +7,7 @@
   - EveParserNew.parse() — единственная точка разбора JSON-дампов eveui.exe
     (см. client.py: reader_loop -> _parse_loop).
   - Результат (ParsedUIState, draw_list) кладётся в очередь для бота (bot.py)
-    и через callback уходит в окно отладки (main.py -> ParserDebugWindow).
-  - На том же состоянии state_json.build_state_payload() готовит JSON-структуру
+    и через callback уходит в окно отладки (main.py -> ParserDebugWindow).  - На том же состоянии state_json.build_state_payload() готовит JSON-структуру
     для передачи исполнительному боту и нейросети (см. state_json.py).
 
 Структура локального чата в JSON:

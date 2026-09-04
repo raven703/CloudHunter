@@ -3,10 +3,7 @@ from tkinter import ttk
 import threading
 import time
 from queue import Empty
-import win32gui
-import win32process
-import win32api
-import win32con
+import ctypes
 import sys
 import os
 
@@ -26,17 +23,6 @@ class WidgetLogger:
 
     def flush(self):
         pass
-
-class DebugWindow(tk.Toplevel):
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.title("EVE DEBUG HUD")
-        self.geometry("800x800+0+0")
-        self.configure(bg='#0a0a0a')
-        self.canvas = tk.Canvas(self, bg='#0a0a0a', highlightthickness=0)
-        self.canvas.pack(fill=tk.BOTH, expand=True)
-        self.protocol("WM_DELETE_WINDOW", self.withdraw)
-        self.withdraw()
 
 class ParserDebugWindow(tk.Toplevel):
     """Полноценное окно отладки НОВОГО парсера.
@@ -167,7 +153,6 @@ class EveApp:
         self.root.configure(bg='#1a1a1a')
         
         self.build_ui()
-        self.debug_window = DebugWindow(self.root)
         self.parser_debug_window = ParserDebugWindow(self.root)
 
         self.stderr_redirector = WidgetLogger(self.log_safe)
@@ -185,9 +170,12 @@ class EveApp:
         self.bot = EveBot(stats=self.stats)
 
         self.running = False
-        self.game_hwnd = None
-        self.last_game_width = 1024
-        
+        # Тик бота выполняется в отдельном потоке: GUI (кнопка STOP) не
+        # блокируется на время действий pyautogui (клики, паузы).
+        self._bot_thread = None
+        # Флаг от потока хоткея Ctrl+Shift+S -> обрабатывается в logic_loop
+        self._hotkey_stop_requested = False
+
         self.root.protocol("WM_DELETE_WINDOW", self.on_exit)
 
     def log_safe(self, text):
@@ -201,37 +189,6 @@ class EveApp:
             self.log_view.insert(tk.END, f"[{time.strftime('%H:%M:%S')}] {text}\n")
             self.log_view.see(tk.END)
             self.log_view.config(state="disabled")
-
-    def find_game_window(self):
-        target_process = "exefile.exe"
-        self.found_hwnd = None
-        def enum_windows_callback(hwnd, _):
-            if win32gui.IsWindowVisible(hwnd):
-                title = win32gui.GetWindowText(hwnd)
-                if title.startswith("EVE"):
-                    _, pid = win32process.GetWindowThreadProcessId(hwnd)
-                    try:
-                        handle = win32api.OpenProcess(win32con.PROCESS_QUERY_INFORMATION | win32con.PROCESS_VM_READ, False, pid)
-                        exe_name = win32process.GetModuleFileNameEx(handle, 0)
-                        win32api.CloseHandle(handle)
-                        if target_process in exe_name.lower():
-                            rect = win32gui.GetWindowRect(hwnd)
-                            if rect[2] - rect[0] > 100:
-                                self.found_hwnd = hwnd
-                                return False
-                    except: pass
-            return True
-        win32gui.EnumWindows(enum_windows_callback, None)
-        return self.found_hwnd
-
-    def get_actual_game_width(self):
-        if not self.game_hwnd or not win32gui.IsWindow(self.game_hwnd):
-            self.game_hwnd = self.find_game_window()
-        if self.game_hwnd:
-            rect = win32gui.GetClientRect(self.game_hwnd)
-            w = rect[2] - rect[0]
-            if w > 100: self.last_game_width = w
-        return self.last_game_width
 
     def build_ui(self):
         # ---- Баннер состояния бота (красный/жёлтый/зелёный/синий) ----
@@ -293,11 +250,6 @@ class EveApp:
         tk.Checkbutton(opts_frame, text="Verbose Log", variable=self.verbose_var, command=self.toggle_verbose,
                        bg='#1a1a1a', fg='#cccccc', selectcolor='black',
                        activebackground='#1a1a1a', activeforeground='#ffffff').pack(anchor="w")
-
-        self.debug_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(opts_frame, text="Show Debug HUD", variable=self.debug_var, command=self.toggle_debug,
-                       bg='#1a1a1a', fg='white', selectcolor='black',
-                       activebackground='#1a1a1a').pack(anchor="w")
 
         tk.Label(self.root, text="WORLD STATUS", bg='#1a1a1a', fg='#888888', font=("Arial", 8, "bold")).pack(anchor="w", padx=10)
         # state="disabled" позволяет копировать, но запрещает ввод
@@ -365,10 +317,6 @@ class EveApp:
         self.stat_vars['drones'].set(str(self.stats.get('drones_lost', 0)))
         self.stat_vars['escapes'].set(str(self.stats.get('escapes', 0)))
 
-    def toggle_debug(self):
-        if self.debug_var.get(): self.debug_window.deiconify()
-        else: self.debug_window.withdraw()
-
     def on_new_state(self, state):
         """Callback из потока парсинга (client): перекидываем в GUI-поток."""
         try:
@@ -399,12 +347,16 @@ class EveApp:
 
     def start_bot(self):
         self.running = True
+        self.bot._stop_requested = False   # сброс запроса STOP (кнопка/hotkey)
         self.btn_start.config(state="disabled")
         self.btn_stop.config(state="normal")
         self.update_log_widget("SYSTEM: BOT STARTED")
 
     def stop_bot(self):
         self.running = False
+        # Кооперативная остановка: текущее действие бота завершится, новых
+        # действий не будет (флаг проверяется между фазами think()).
+        self.bot.request_stop()
         self.btn_start.config(state="normal")
         self.btn_stop.config(state="disabled")
         self.update_log_widget("SYSTEM: BOT STOPPED")
@@ -504,10 +456,18 @@ class EveApp:
     def logic_loop(self):
         if not self.root.winfo_exists(): return
         try:
-            state, draw_list, payload = self.client.queue.get_nowait()
-            # (state, draw_list, payload) уже готовы — их положил client._parse_loop.
+            state, _draw_list, payload = self.client.queue.get_nowait()
+            # (state, _draw_list, payload) уже готовы — их положил client._parse_loop.
             # payload — JSON-структура для исполнительного бота/нейросети
             # (state_json.py), она же пишется в state_payload.json.
+
+            # Горячая клавиша STOP (Ctrl+Shift+S): флаг ставит поток хоткея,
+            # обработка — здесь, в GUI-потоке.
+            if self._hotkey_stop_requested:
+                self._hotkey_stop_requested = False
+                if self.running:
+                    self.update_log_widget("SYSTEM: HOTKEY Ctrl+Shift+S -> STOP")
+                    self.stop_bot()
 
             # Обновление текста состояния (с возможностью выделения)
             self.status_view.config(state="normal")
@@ -521,14 +481,13 @@ class EveApp:
                 self.status_view.config(fg="#00ccff")
 
             if self.running:
-                self.bot.think(state, use_drones=self.mode_var.get())
+                # Тик бота — в отдельном потоке: GUI и кнопка STOP реагируют
+                # мгновенно, даже пока бот кликает/ждёт внутри think().
+                self._start_bot_thread(state, use_drones=self.mode_var.get())
 
             # Баннер состояния + панель статистики (дёшево, каждый тик)
             self.update_banner(state)
             self.update_session_stats()
-
-            if self.debug_var.get():
-                self.render_debug(draw_list)
 
         except Empty: pass
         except Exception as e:
@@ -537,23 +496,54 @@ class EveApp:
 
         self.root.after(30, self.logic_loop)
 
-    def render_debug(self, draw_list):
-        if not self.debug_window.winfo_exists(): return
-        canvas = self.debug_window.canvas
-        canvas.delete("all")
-        game_w = self.get_actual_game_width()
-        canvas_w = canvas.winfo_width()
-        scale = canvas_w / game_w if game_w > 0 else 1.0
+    def _start_bot_thread(self, state, use_drones):
+        """Запуск одного тика бота в фоновом потоке.
 
-        for item in sorted(draw_list, key=lambda x: x.get("priority", 0)):
-            ax, ay, w, h = item["rect"]
-            x1, y1, x2, y2 = ax*scale, ay*scale, (ax+w)*scale, (ay+h)*scale
-            canvas.create_rectangle(x1, y1, x2, y2, outline=item["color"], width=(2 if item.get("priority", 0) > 5 else 1))
-            if item.get("label"):
-                canvas.create_text(x1+4, y1+2, text=item["label"], fill=item["color"], anchor="nw", font=("Consolas", 8))
+        Одновременно живёт максимум один тик: пока предыдущий выполняет
+        действия (клики, паузы), новые состояния пропускаются — бот возьмёт
+        свежее состояние из очереди на следующем обороте logic_loop.
+        """
+        t = self._bot_thread
+        if t is not None and t.is_alive():
+            return
+        self._bot_thread = threading.Thread(
+            target=self._bot_tick, args=(state, use_drones), daemon=True)
+        self._bot_thread.start()
+
+    def _bot_tick(self, state, use_drones):
+        """Один think() бота вне GUI-потока (ошибки не роняют GUI)."""
+        try:
+            self.bot.think(state, use_drones=use_drones)
+        except Exception as e:
+            print(f"[App] Bot error: {e}")
+
+    def _hotkey_loop(self):
+        """Глобальный хоткей STOP: Ctrl+Shift+S.
+
+        Работает при любом фокусе (включая окно EVE) — опрос GetAsyncKeyState
+        в отдельном потоке с детектом фронтa нажатия. Флаг обрабатывается
+        в logic_loop (GUI-поток), чтобы не трогать tkinter из другого потока.
+        """
+        user32 = ctypes.windll.user32
+        VK_CONTROL, VK_SHIFT, VK_S = 0x11, 0x10, 0x53
+        print("[App] Горячая клавиша STOP: Ctrl+Shift+S")
+        was_down = False
+        while True:
+            try:
+                down = (user32.GetAsyncKeyState(VK_CONTROL) & 0x8000) and \
+                       (user32.GetAsyncKeyState(VK_SHIFT) & 0x8000) and \
+                       (user32.GetAsyncKeyState(VK_S) & 0x8000)
+            except Exception:
+                return
+            if down and not was_down:
+                self._hotkey_stop_requested = True
+            was_down = down
+            time.sleep(0.05)
 
     def run(self):
         threading.Thread(target=self.client.reader_loop, daemon=True).start()
+        # Поток глобального хоткея STOP (Ctrl+Shift+S)
+        threading.Thread(target=self._hotkey_loop, daemon=True).start()
         self.logic_loop()
         self.root.mainloop()
 
