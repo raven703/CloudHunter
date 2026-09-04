@@ -1,8 +1,8 @@
 {
   "meta": {
     "schema_version": 1,
-    "timestamp": 1788528832.447,
-    "datetime": "2026-09-04 16:33:52",
+    "timestamp": 1788532277.341,
+    "datetime": "2026-09-04 17:31:17",
     "window": {
       "width": 1497,
       "height": 1001
@@ -21,18 +21,18 @@
   },
   "ship": {
     "hp": {
-      "shield_pct": 1.0,
+      "shield_pct": 100.0,
       "armor_pct": 100.0,
       "structure_pct": 100.0,
-      "capacitor_pct": 63.9
+      "capacitor_pct": 79.2
     },
     "speed_mps": 0.0,
     "movement": {
-      "is_warp": true,
+      "is_warp": false,
       "is_establishing": false,
       "is_orbiting": false,
       "is_docked": false,
-      "state": "WARP"
+      "state": "STATIONARY"
     },
     "is_pvp": false
   },
@@ -105,80 +105,91 @@
   "selected_item": null,
   "scanner": [
     {
-      "id": "UGE-464",
-      "name": "Small Mercoxit Deposit",
-      "group": "Ore Site",
-      "distance": 4827523287489.0,
-      "signal": 0.0,
-      "type": "ore",
-      "x": 446,
-      "y": 82,
-      "h": 20
-    },
-    {
-      "id": "MLD-940",
-      "name": "Small Arkonor and Bistot Deposit",
-      "group": "Ore Site",
-      "distance": 2027051147985.0,
-      "signal": 0.0,
-      "type": "ore",
-      "x": 446,
-      "y": 102,
-      "h": 20
-    },
-    {
-      "id": "IDD-622",
-      "name": "Sansha Sanctum",
+      "id": "XAC-266",
+      "name": "Sansha Forsaken Hub",
       "group": "Combat Site",
-      "distance": 2402541803442.0,
+      "distance": 1816118150298.0,
       "signal": 0.0,
       "type": "combat",
       "x": 446,
-      "y": 122,
+      "y": 69,
       "h": 20
     },
     {
-      "id": "GMH-646",
-      "name": "Sansha Hidden Rally Point",
+      "id": "FEL-064",
+      "name": "Sansha Forsaken Hub",
       "group": "Combat Site",
-      "distance": 1780214661330.0,
+      "distance": 2386086037665.0,
       "signal": 0.0,
       "type": "combat",
       "x": 446,
-      "y": 142,
+      "y": 89,
       "h": 20
     },
     {
-      "id": "QGP-560",
-      "name": "Sansha Hidden Hub",
+      "id": "FFM-435",
+      "name": "Sansha Forsaken Hub",
       "group": "Combat Site",
-      "distance": 2287351443003.0,
+      "distance": 2080906381437.0,
       "signal": 0.0,
       "type": "combat",
       "x": 446,
-      "y": 162,
+      "y": 109,
       "h": 20
     },
     {
-      "id": "OBT-172",
-      "name": "Sansha Hidden Hub",
+      "id": "IBI-210",
+      "name": "Sansha Forsaken Hub",
       "group": "Combat Site",
-      "distance": 4793115777228.0,
+      "distance": 1846037724438.0,
       "signal": 0.0,
       "type": "combat",
       "x": 446,
-      "y": 182,
+      "y": 129,
       "h": 20
     },
     {
-      "id": "OKW-372",
-      "name": "Sansha Hidden Hub",
+      "id": "IAU-768",
+      "name": "Sansha Forlorn Hub",
       "group": "Combat Site",
-      "distance": 1690455938910.0,
+      "distance": 2466868887843.0,
       "signal": 0.0,
       "type": "combat",
       "x": 446,
-      "y": 202,
+      "y": 149,
+      "h": 20
+    },
+    {
+      "id": "LKJ-171",
+      "name": "Sansha Forlorn Hub",
+      "group": "Combat Site",
+      "distance": 2121297806526.0,
+      "signal": 0.0,
+      "type": "combat",
+      "x": 446,
+      "y": 169,
+      "h": 20
+    },
+    {
+      "id": "RMZ-590",
+      "name": "Sansha Forlorn Hub",
+      "group": "Combat Site",
+      "distance": 1931308510737.0,
+      "signal": 0.0,
+      "type": "combat",
+      "x": 446,
+      "y": 189,
+      "h": 20
+    },
+    {
+      "id": "PVM-280",
+      "name": "Sansha Forlorn Hub",
+      "group": "Combat Site",
+      "distance": 2501276398104.0,
+      "signal": 0.0,
+      "type": "combat",
+      "x": 446,
+      "y": 209,
       "h": 20
     }
   ],
@@ -213,7 +224,7 @@
       {
         "name": "chat",
         "has_notification": true,
-        "notification_count": 0
+        "notification_count": 1
       },
       {
         "name": "assets",
@@ -241,7 +252,7 @@
         "notification_count": 0
       }
     ],
-    "clock": "13:33"
+    "clock": "14:31"
   },
   "executor": {
     "combat_mode": "IDLE",
@@ -253,12 +264,12 @@
     "reason": "no threats and no targets"
   },
   "nn_features": {
-    "hp_shield": 0.01,
+    "hp_shield": 1.0,
     "hp_armor": 1.0,
     "hp_structure": 1.0,
-    "hp_capacitor": 0.6389,
+    "hp_capacitor": 0.7917,
     "speed_mps": 0.0,
-    "is_warp": 1,
+    "is_warp": 0,
     "is_establishing": 0,
     "is_orbiting": 0,
     "is_docked": 0,

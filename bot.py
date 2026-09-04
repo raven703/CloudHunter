@@ -33,6 +33,10 @@ class EveBot:
             'drone_hp_recall': 0.5,        # доля HP дрона для отзыва (0..1; HP может не парситься)
             'drone_relaunch_delay': 3.0,   # пауза перед перезапуском собранных дронов, сек
             'min_drones': 1,               # тревога, если живых дронов меньше
+            'drone_hp_check_interval': 2.0,# как часто проверять HP дронов (сек)
+            # --- захват целей ---
+            'lock_batch_size': 3,          # сколько целей захватывать за раз (если в овервью >= этого числа)
+            'lock_batch_delay': 0.6,       # пауза между ctrl+кликами целей в пакете (сек)
             # --- миссия: полёт по аномалиям из probe scanner ---
             'anomaly_group_filter': 'combat',   # фильтр по group+name (lower)
             'anomaly_revisit_cooldown': 600,    # сек до повторного визита аномалии
@@ -69,6 +73,15 @@ class EveBot:
         self._last_orbit_fix_ts = 0.0    # последнее повторное включение орбиты (контроль в бою)
         self._module_click_ts = {}       # слот -> ts последнего клика по модулю HUD (анти-даблклик)
         self._prop_keep_off_ts = 0.0     # ts выключения двигателя перед варпом (окно "не включать обратно")
+
+        # --- Захват целей пакетами по N ---
+        self._lock_queue = []            # очередь целей для захвата (кандидаты из _lock_candidates)
+        self._lock_batch_remaining = 0   # сколько целей осталось захватить в текущем пакете
+        self._lock_batch_ts = 0.0        # ts последнего ctrl+клика в пакете
+
+        # --- Трекинг HP дронов (для детекта "дронов бьют") ---
+        self._drone_hp_prev = {}         # drone_name -> hp (предыдущее значение)
+        self._drone_hp_check_ts = 0.0    # ts последней проверки HP дронов
 
         # --- Модальное окно Information (всплывает после варпа): закрытие Enter -> клик Close ---
         self._modal_attempts = 0
@@ -683,23 +696,19 @@ class EveBot:
             self._last_lock_action_ts = now
 
     def _target_fsm(self, state, off_x, off_y, now):
-        """Боевой цикл против NPC.
+        """Боевой цикл против NPC: захват пакетами по N целей.
 
-        Пока корабль в варпе FSM заморожена: цель уже может быть видна в
-        овервью, но выбор/орбиту/лок начинаем только после выхода из варпа.
+        Пока корабль в варпе FSM заморожена. Прилёт -> выбор первой цели ->
+        орбита -> пакетный захват (Ctrl+клик по 1-й, 2-й, 3-й до lock_batch_size)
+        -> атака до уничтожения.
 
-        Прилёт в аномалию -> выбор цели из овервью (одиночный клик) ->
-        орбита выбранной цели (иконка Orbit, при её отсутствии хоткей
-        W + клик по строке) -> попытка захвата в лок (Ctrl+клик) ->
-        атака до уничтожения цели.
+        Сколько целей захватывать:
+          - если в овервью >= lock_batch_size (3) — захватываем ровно 3
+          - если меньше — все доступные
+        Приоритет кандидатов: фрегаты (скрам-угроза) -> остальные по дистанции.
 
-        Approach НЕ используется: сближение только орбитой вокруг цели.
-        Если цель вне зоны захвата (лок не сработал за lock_timeout) —
-        держим орбиту и повторяем лок; после lock_max_attempts неудачных
-        попыток цель исключается (_skip_coords) и берётся следующая.
-
-        В бою (ATTACK) контролируем статус орбиты: если она слетела —
-        включаем заново вокруг атакуемой цели (см. _ensure_orbit_on_target).
+        Approach НЕ используется. Если пакет не удалось захватать — повторяем
+        с той же орбитой; после lock_max_attempts неудач цель исключается.
         """
         # Во время варпа захват цели не начинаем
         if state.is_warp:
@@ -711,9 +720,10 @@ class EveBot:
             if self._combat_step != 'ATTACK':
                 self._combat_step = 'ATTACK'
                 self._lock_attempts = 0
-                # Дать индикации HUD время показать 'Orbiting ...'
+                self._lock_batch_remaining = 0
+                self._lock_queue = []
                 self._last_orbit_fix_ts = now
-                print("[Combat] Цель захвачена! Атакую до уничтожения.")
+                print(f"[Combat] {len(state.targets)} целей захвачено! Атакую до уничтожения.")
             # Контроль орбиты: слетела — включаем заново вокруг атакуемой цели
             self._ensure_orbit_on_target(state, off_x, off_y, now)
             return
@@ -722,63 +732,93 @@ class EveBot:
             return
 
         step = self._combat_step
+        cand = self._lock_candidates(state)
 
         if step in ('ATTACK', 'IDLE'):
-            # 1. ВЫБОР цели из овервью (одиночный клик, приоритет: фрегаты)
-            cand = self._lock_candidates(state)
             if not cand:
                 return
-            lx, ly = cand[0]
+            # Формируем пакет целей: до lock_batch_size, но не больше чем есть
+            batch_size = min(self.cfg['lock_batch_size'], len(cand))
+            self._lock_queue = list(cand[:batch_size])
+            self._lock_batch_remaining = len(self._lock_queue)
+            lx, ly = self._lock_queue[0]
             self._current_target_coords = (lx, ly)
-            print("[Combat] Выбираю цель из овервью (одиночный клик)")
+            print(f"[Combat] Выбираю цель 1/{len(self._lock_queue)} из овервью "
+                  f"(пакет на {len(self._lock_queue)} целей)")
             self._click_at(lx + off_x, ly + off_y)
             self._combat_step = 'SELECT'
             self._step_ts = now
 
         elif step == 'SELECT':
             if now - self._step_ts >= self.cfg['select_wait']:
-                # 2. ОРБИТА выбранной цели (иконка Orbit, при её отсутствии
-                #    хоткей W + клик по строке овервью)
+                # ОРБИТА первой цели из пакета
                 self._enable_orbit(state, off_x, off_y)
                 self._combat_step = 'ORBIT'
                 self._step_ts = now
 
         elif step == 'ORBIT':
             if now - self._step_ts >= self.cfg['orbit_wait']:
-                # 3. ПОПЫТКА ЗАХВАТА В ЛОК (Ctrl+клик по строке овервью)
-                cand = self._lock_candidates(state)
-                if cand:
-                    lx, ly = cand[0]
-                    print("[Combat] Попытка захвата цели в лок (Ctrl+клик)")
+                # ПАКЕТНЫЙ ЗАХВАТ: Ctrl+клик по первой цели
+                if self._lock_queue:
+                    lx, ly = self._lock_queue[0]
+                    print(f"[Combat] Пакетный захват: цель 1/{len(self._lock_queue)} "
+                          f"(Ctrl+клик)")
                     pyautogui.keyDown('ctrl')
                     self._click_at(lx + off_x, ly + off_y)
                     pyautogui.keyUp('ctrl')
+                    self._lock_batch_remaining = len(self._lock_queue) - 1
                     self._lock_attempts += 1
-                    self._combat_step = 'LOCK'
-                    self._step_ts = now
+                    self._combat_step = 'LOCK_BATCH'
+                    self._lock_batch_ts = now
 
-        elif step == 'LOCK':
-            if now - self._step_ts >= self.cfg['lock_timeout']:
+        elif step == 'LOCK_BATCH':
+            # Захватываем оставшиеся цели из пакета с небольшой паузой
+            if self._lock_batch_remaining > 0 and self._lock_queue:
+                if now - self._lock_batch_ts >= self.cfg['lock_batch_delay']:
+                    idx = len(self._lock_queue) - self._lock_batch_remaining
+                    if idx < len(self._lock_queue):
+                        lx, ly = self._lock_queue[idx]
+                        print(f"[Combat] Пакетный захват: цель {idx+1}/{len(self._lock_queue)} "
+                              f"(Ctrl+клик)")
+                        pyautogui.keyDown('ctrl')
+                        self._click_at(lx + off_x, ly + off_y)
+                        pyautogui.keyUp('ctrl')
+                        self._lock_batch_remaining -= 1
+                        self._lock_batch_ts = now
+            else:
+                # Все цели из пакета обработаны — ждём локов
+                self._combat_step = 'LOCK_WAIT'
+                self._step_ts = now
+
+        elif step == 'LOCK_WAIT':
+            locked_count = len(state.targets or [])
+            if locked_count > 0:
+                self._combat_step = 'ATTACK'
+                self._lock_attempts = 0
+                self._lock_queue = []
+                self._last_orbit_fix_ts = now
+                print(f"[Combat] Захвачено {locked_count} целей! Атакую до уничтожения.")
+            elif now - self._step_ts >= self.cfg['lock_timeout']:
                 if self._lock_attempts >= self.cfg['lock_max_attempts']:
-                    print("[Combat] Лок так и не сработал — исключаю цель, беру следующую")
-                    if self._current_target_coords:
-                        self._skip_coords[self._current_target_coords] = time.time()
+                    print("[Combat] Лок так и не сработал — исключаю цели, беру следующий пакет")
+                    for c in self._lock_queue:
+                        self._skip_coords[c] = time.time()
                     self._lock_attempts = 0
-                    self._combat_step = 'IDLE'   # FSM выберет следующего кандидата
+                    self._lock_queue = []
+                    self._combat_step = 'IDLE'
                 else:
-                    # Approach не используем (только орбита): держим орбиту
-                    # и повторяем попытку лока
-                    print(f"[Combat] Цель вне зоны захвата, попытка "
+                    print(f"[Combat] Цели вне зоны захвата, попытка "
                           f"{self._lock_attempts}/{self.cfg['lock_max_attempts']} — "
-                          f"держу орбиту, повторяю лок")
+                          f"держу орбиту, повторяю пакетный захват")
                     self._enable_orbit(state, off_x, off_y)
                     self._combat_step = 'ORBIT'
                     self._step_ts = now
             else:
-                self._vlog_throttled('c_lock', f"combat: жду лок цели ещё "
-                                               f"{self.cfg['lock_timeout'] - (now - self._step_ts):.1f} с "
-                                               f"(попытка {self._lock_attempts}/"
-                                               f"{self.cfg['lock_max_attempts']})")
+                self._vlog_throttled('c_lock',
+                                     f"combat: жду лок пакета ещё "
+                                     f"{self.cfg['lock_timeout'] - (now - self._step_ts):.1f} с "
+                                     f"(попытка {self._lock_attempts}/"
+                                     f"{self.cfg['lock_max_attempts']})")
 
     def _click_target_row(self, target, off_x, off_y):
         """Клик по строке цели в панели лока — делает её активной (фокус огня)."""
@@ -802,17 +842,62 @@ class EveBot:
 
     # ==================== ДРОНЫ: ЦИКЛ ВЫЖИВАНИЯ ====================
 
+    def _check_drones_under_attack_by_hp(self, state, now):
+        """Проверка: бьют ли дронов по снижению HP.
+
+        Сравниваем текущий HP дронов с предыдущим значением. Если HP
+        уменьшился — дрон под огнём, нужно собирать. Запоминаем текущие
+        значения для следующей проверки.
+        """
+        if not state.drone_entries:
+            self._drone_hp_prev.clear()
+            return False
+
+        # Проверяем не чаще интервала (HP обновляется с задержкой)
+        if now - self._drone_hp_check_ts < self.cfg['drone_hp_check_interval']:
+            # Но всё равно обновляем снимок HP для корректного сравнения позже
+            for d in state.drone_entries:
+                name = d.get('name')
+                hp = d.get('hp')
+                if name and isinstance(hp, (int, float)):
+                    self._drone_hp_prev[name] = float(hp)
+            return False
+
+        self._drone_hp_check_ts = now
+        hit_detected = False
+
+        for d in state.drone_entries:
+            name = d.get('name')
+            hp = d.get('hp')
+            if not name or not isinstance(hp, (int, float)):
+                continue
+            cur = float(hp)
+            prev = self._drone_hp_prev.get(name, cur)
+            if cur < prev - 0.5:  # HP уменьшился более чем на 0.5 — бьют
+                hit_detected = True
+            self._drone_hp_prev[name] = cur
+
+        return hit_detected
+
     def _drone_combat_cycle(self, state, now):
         """Микро-FSM: FIGHTING -> RECALLING -> COOLDOWN -> FIGHTING.
 
-        - Дронов бьют (или у дрона низкий HP) -> собираем (Shift+R).
-          Пушки при этом продолжают стрелять.
-        - Когда все дроны в ангаре -> пауза -> перезапуск (Shift+F) -> атака (F).
+        Контроль состояния дронов:
+        1. Если дронов бьют (state.drones_under_attack или HP снижается) ->
+           собираем (Shift+R). Пушки продолжают стрелять.
+        2. Когда все дроны в ангаре (status in bay) -> пауза ->
+           перезапуск (Shift+F) -> атака (F).
+        3. Если дронов нет в ангаре и в космосе — алерт (дроны потеряны).
         """
+        # Обновляем снимок HP и проверяем, бьют ли дронов
+        hp_declining = self._drones_taking_damage(state, now)
+
         if self._drone_phase == 'FIGHTING':
             # 1. Дронов бьют — срочно собираем
-            if state.drones_under_attack and state.drones_in_space > 0:
-                print("[Bot][Drones] Дроны под огнём! Собираю (Shift+R), пушки продолжают")
+            drones_attacked = (state.drones_under_attack or hp_declining) and state.drones_in_space > 0
+            if drones_attacked:
+                reason = "state.drones_under_attack" if state.drones_under_attack else "HP снижается"
+                print(f"[Bot][Drones] Дроны под огнём ({reason})! Собираю (Shift+R)")
                 self._press_shift('r')
                 self._drone_phase = 'RECALLING'
                 return
@@ -844,7 +929,9 @@ class EveBot:
 
         elif self._drone_phase == 'COOLDOWN':
             if now >= self._drone_cooldown_until:
-                print("[Bot][Drones] Перезапускаю дронов в бой")
+                print("[Bot][Drones] Перезапускаю дронов в бой (Shift+F)")
+                self._press_shift('f')
+                time.sleep(5)
                 self._drone_phase = 'FIGHTING'
 
     def _press_shift(self, key):
@@ -854,6 +941,29 @@ class EveBot:
         pyautogui.press(key)
         time.sleep(0.1)
         pyautogui.keyUp('shift')
+
+    def _drones_taking_damage(self, state, now):
+        """Детект того, что дронов бьют (HP уменьшился).
+
+        Сравниваем текущий HP каждого дрона с предыдущим значением. Если HP
+        уменьшился — дрон под атакой. Проверяем не чаще drone_hp_check_interval
+        (парсить HP дорого, а индикация обновляется с задержкой).
+        """
+        if now - self._drone_hp_check_ts < self.cfg['drone_hp_check_interval']:
+            return []
+        self._drone_hp_check_ts = now
+
+        damaged = []
+        for d in state.drone_entries or []:
+            name = str(d.get('name') or '').strip()
+            hp = d.get('hp')
+            if not name or not isinstance(hp, (int, float)) or hp <= 0:
+                continue
+            prev = self._drone_hp_prev.get(name)
+            if prev is not None and hp < prev:
+                damaged.append({'name': name, 'hp': hp, 'prev': prev})
+            self._drone_hp_prev[name] = hp
+        return damaged
 
     # ==================== СТАТИСТИКА СЕССИИ ====================
 

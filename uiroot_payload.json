@@ -1,8 +1,8 @@
 {
   "meta": {
     "schema_version": 1,
-    "timestamp": 1788528394.804,
-    "datetime": "2026-09-04 16:26:34",
+    "timestamp": 1788531244.407,
+    "datetime": "2026-09-04 17:14:04",
     "window": {
       "width": 1497,
       "height": 1001
@@ -21,33 +21,60 @@
   },
   "ship": {
     "hp": {
-      "shield_pct": null,
-      "armor_pct": null,
-      "structure_pct": null,
-      "capacitor_pct": null
+      "shield_pct": 100.0,
+      "armor_pct": 100.0,
+      "structure_pct": 100.0,
+      "capacitor_pct": 100.0
     },
     "speed_mps": 0.0,
     "movement": {
       "is_warp": false,
       "is_establishing": false,
       "is_orbiting": false,
-      "is_docked": true,
-      "state": "DOCKED"
+      "is_docked": false,
+      "state": "STATIONARY"
     },
     "is_pvp": false
   },
   "modules": {
-    "status": {},
-    "repairers": {},
-    "prop_modules": {},
+    "status": {
+      "inFlightMediumSlot3": "READY",
+      "inFlightLowSlot5": "READY"
+    },
+    "repairers": {
+      "inFlightLowSlot5": "READY"
+    },
+    "prop_modules": {
+      "inFlightMediumSlot3": "READY"
+    },
     "high_slots": [],
-    "medium_slots": [],
-    "low_slots": []
+    "medium_slots": [
+      {
+        "name": "inFlightMediumSlot3",
+        "active": false,
+        "icon": "res:/ui/texture/icons/3_64_2.png",
+        "x": 895,
+        "y": 900,
+        "w": 48,
+        "h": 48
+      }
+    ],
+    "low_slots": [
+      {
+        "name": "inFlightLowSlot5",
+        "active": false,
+        "icon": "res:/ui/texture/icons/1_64_11.png",
+        "x": 870,
+        "y": 944,
+        "w": 48,
+        "h": 48
+      }
+    ]
   },
   "drones": {
-    "in_bay": 0,
+    "in_bay": 5,
     "in_space": 0,
-    "max": 0,
+    "max": 5,
     "idle": false,
     "fighting": false,
     "returning": false,
@@ -76,7 +103,85 @@
   },
   "overview": [],
   "selected_item": null,
-  "scanner": [],
+  "scanner": [
+    {
+      "id": "UGE-464",
+      "name": "Small Mercoxit Deposit",
+      "group": "Ore Site",
+      "distance": 4827523287489.0,
+      "signal": 0.0,
+      "type": "ore",
+      "x": 446,
+      "y": 82,
+      "h": 20
+    },
+    {
+      "id": "MLD-940",
+      "name": "Small Arkonor and Bistot Deposit",
+      "group": "Ore Site",
+      "distance": 2027051147985.0,
+      "signal": 0.0,
+      "type": "ore",
+      "x": 446,
+      "y": 102,
+      "h": 20
+    },
+    {
+      "id": "IDD-622",
+      "name": "Sansha Sanctum",
+      "group": "Combat Site",
+      "distance": 2402541803442.0,
+      "signal": 0.0,
+      "type": "combat",
+      "x": 446,
+      "y": 122,
+      "h": 20
+    },
+    {
+      "id": "GMH-646",
+      "name": "Sansha Hidden Rally Point",
+      "group": "Combat Site",
+      "distance": 1780214661330.0,
+      "signal": 0.0,
+      "type": "combat",
+      "x": 446,
+      "y": 142,
+      "h": 20
+    },
+    {
+      "id": "QGP-560",
+      "name": "Sansha Hidden Hub",
+      "group": "Combat Site",
+      "distance": 2287351443003.0,
+      "signal": 0.0,
+      "type": "combat",
+      "x": 446,
+      "y": 162,
+      "h": 20
+    },
+    {
+      "id": "OBT-172",
+      "name": "Sansha Hidden Hub",
+      "group": "Combat Site",
+      "distance": 4793115777228.0,
+      "signal": 0.0,
+      "type": "combat",
+      "x": 446,
+      "y": 182,
+      "h": 20
+    },
+    {
+      "id": "OKW-372",
+      "name": "Sansha Hidden Hub",
+      "group": "Combat Site",
+      "distance": 1690455938910.0,
+      "signal": 0.0,
+      "type": "combat",
+      "x": 446,
+      "y": 202,
+      "h": 20
+    }
+  ],
   "context_menu": {
     "open": false,
     "type": "",
@@ -129,32 +234,37 @@
         "name": "uicontrols.Window",
         "has_notification": true,
         "notification_count": 0
+      },
+      {
+        "name": "uicontrols.Window",
+        "has_notification": true,
+        "notification_count": 0
       }
     ],
-    "clock": "12:50"
+    "clock": "13:30"
   },
   "executor": {
     "combat_mode": "IDLE",
     "threat_level": 0,
-    "recommended_action": "IDLE",
+    "recommended_action": "ACTIVATE_REPAIRER",
     "lock_candidates": [],
     "recall_drones": false,
-    "activate_repairer": null,
-    "reason": "no threats and no targets"
+    "activate_repairer": "inFlightLowSlot5",
+    "reason": "repairer inFlightLowSlot5 is offline"
   },
   "nn_features": {
-    "hp_shield": -1.0,
-    "hp_armor": -1.0,
-    "hp_structure": -1.0,
-    "hp_capacitor": -1.0,
+    "hp_shield": 1.0,
+    "hp_armor": 1.0,
+    "hp_structure": 1.0,
+    "hp_capacitor": 1.0,
     "speed_mps": 0.0,
     "is_warp": 0,
     "is_establishing": 0,
     "is_orbiting": 0,
-    "is_docked": 1,
-    "drones_in_bay": 0,
+    "is_docked": 0,
+    "drones_in_bay": 5,
     "drones_in_space": 0,
-    "drones_max": 0,
+    "drones_max": 5,
     "drones_idle": 0,
     "drones_fighting": 0,
     "drones_returning": 0,
