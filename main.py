@@ -415,6 +415,20 @@ class EveApp:
             report.append(f"REPAIR: {' '.join(rep_status)}")
         else:
             report.append("REPAIR: NOT FOUND")
+
+        # --- СТАТУС ДВИГАТЕЛЯ (afterburner/MWD) ---
+        if getattr(state, 'prop_modules', None):
+            prop_status = []
+            for name, status in state.prop_modules.items():
+                # InFlightMediumSlot0 -> Med 0
+                short_name = name.replace("InFlightMediumSlot", "Med ")
+                short_name = short_name.replace("InFlightLowSlot", "Low ")
+                short_name = short_name.replace("InFlightHighSlot", "High ")
+                color_mark = "●" if status == "ACTIVE" else "○"
+                prop_status.append(f"{short_name}:{color_mark}")
+            report.append(f"PROP: {' '.join(prop_status)}")
+        else:
+            report.append("PROP: NOT FOUND")
         
         #ЛОГИКА ДРОНОВ
         if state.drones_in_space > 0:

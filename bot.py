@@ -47,6 +47,9 @@ class EveBot:
             'orbit_recheck_cooldown': 6.0,      # как часто в бою перепроверять орбиту (сек), чтобы не задваивать команду
             'prop_keep_off_time': 25.0,         # окно "двигатель выключен перед варпом" (сек): меню варпа + старт варпа
             'repair_missing_warn_interval': 60.0,  # как часто предупреждать, если модуля ремонта нет (сек)
+            # --- старт: undock и проб-сканер ---
+            'undock_cooldown': 5.0,            # не кликать Undock чаще (сек), пока идёт андок
+            'probe_open_timeout': 5.0,         # не жать Alt+P чаще, пока окно открывается (сек)
         }
 
         # --- Микро-FSM дронов: FIGHTING | RECALLING | COOLDOWN ---
@@ -98,6 +101,13 @@ class EveBot:
         # --- Контроль модуля ремонта (предупреждение, если репки нет) ---
         self._was_docked = False         # был ли корабль в доке на прошлом тике
         self._repair_missing_warn_ts = 0.0
+        self._warned_repair_missing = False   # алерт "репки нет" уже выводился (1 раз)
+        self._warned_prop_missing = False     # алерт "двигателя нет" уже выводился (1 раз)
+
+        # --- Старт: undock и проб-сканер ---
+        self._last_undock_ts = 0.0       # последний клик Undock (анти-спам)
+        self._probe_open_ts = 0.0        # когда нажали Alt+P (анти-спам)
+        self._probe_opening = False      # ждём, пока окно Probe Scanner откроется
 
         # Статистика сессии: bot обновляет, GUI читает
         self.stats = stats if stats is not None else {
@@ -160,7 +170,18 @@ class EveBot:
         print("[Bot] STOP: завершаю текущие действия, новые не начинаю")
 
     def think(self, state, use_drones: bool):
-        # Запрос STOP (кнопка / Ctrl+Shift+S) — немедленный выход из тика
+        """
+        Главный тик бота. Пайплайн:
+          1. Безопасность  + статус дока
+          2. Открыть Probe Scanner (Alt+P, если закрыт)
+          3. Проверить repair module  (вкл / алерт)
+          4. Проверить двигатель     (алерт, если нет)
+          5. Варп в аномалию        (двигатель ВЫКЛ перед варпом)
+          6. Приземление -> бой     (репка + двигатель всегда вкл)
+          7. Орбита: включить 1 раз, контролировать статус
+          8. Стрельба по целям
+        """
+        # --- кооперативная остановка ---
         if self._stop_requested:
             return
         self.current_state = state
@@ -185,11 +206,7 @@ class EveBot:
             print(f"bot: no game window active")
             return # Если окно не найдено, ничего не делаем
         
-        # 0a. ПРИОРИТЕТ: ЗАКРЫТЬ МОДАЛЬНОЕ ОКНО INFORMATION (блокирует весь ввод).
-        #     Всплывает после варпа на аномалию ('Sansha Hidden Rally Point' и т.п.).
-        #     Проще всего нажать Enter — у окна Information в фокусе кнопка Close
-        #     (дефолтная). Если Enter не помог (модалка всё ещё висит), переходим
-        #     к клику по кнопке Close (координаты даёт parse_modal_info).
+        # 0a. Модалка Information (после варпа) — закрыть немедленно
         modal = getattr(state, 'modal_info', None) or {}
         if modal.get('open'):
             self._modal_attempts += 1
@@ -223,104 +240,176 @@ class EveBot:
             self.stats['sites_cleared'] += 1
             print(f"[Stats] Сайт зачищен (всего: {self.stats['sites_cleared']})")
         
-        # 1. ПРИОРИТЕТ: КРИТИЧНЫЕ МОДУЛИ (репка и двигатель — кликом по иконке).
-        #    Контроль в любом состоянии (после андока, перед варпом, в варпе,
-        #    в бою) — кроме дока и экрана загрузки.
-        off_x, off_y = self._get_offset()
-        self._ensure_modules_on(state, off_x, off_y, time.monotonic())
-        if self._stop_requested:
-            return
-
-        # 2. ПРИОРИТЕТ: БЕЗОПАСНОСТЬ
+        # ================================================================
+        # ШАГ 1: БЕЗОПАСНОСТЬ + СТАТУС ДОКА
+        # ================================================================
         if state.local_has_hostile or state.local_has_neutral:
             state.combat_mode_active = "SAFETY"
             self.emergency_exit("Враг в локале!")
             return
-
-        # 3. БОЕВАЯ ЛОГИКА
         if self._stop_requested:
             return
+
+        off_x, off_y = self._get_offset()
+        now_mono = time.monotonic()
+
+        if state.is_docked:
+            state.combat_mode_active = "DOCKED"
+            self._undock(state, off_x, off_y, now_mono)
+            return
+        if state.is_loading:
+            state.combat_mode_active = "LOADING"
+            return
+
+        # ================================================================
+        # ШАГ 2: ОТКРЫТЬ PROBE SCANNER (Alt+P, если закрыт)
+        # ================================================================
+        self._ensure_probe_scanner(state, now_mono)
+        if self._stop_requested:
+            return
+
+        # ================================================================
+        # ШАГ 3: ПРОВЕРИТЬ REPAIR MODULE (вкл / алерт если нет)
+        # ================================================================
+        # ================================================================
+        # ШАГ 4: ПРОВЕРИТЬ ДВИГАТЕЛЬ (алерт если нет)
+        # ================================================================
+        if self._stop_requested:
+            return
+        self._ensure_modules_on(state, off_x, off_y, now_mono)
+        if self._stop_requested:
+            return
+
+        # ================================================================
+        # ШАГ 5: ВАРП В АНОМАЛИЮ (двигатель ВЫКЛ перед варпом)
+        # ================================================================
+        # ================================================================
+        # ШАГ 6: Приземление -> бой (репка + двигатель всегда вкл)
+        # ================================================================
+        # ================================================================
+        # ШАГ 7: Орбита (включить 1 раз, контролировать статус)
+        # ================================================================
+        # ================================================================
+        # ШАГ 8: СТРЕЛЬБА ПО ЦЕЛЯМ
+        # ================================================================
         if state.npc_all:
+            # --- ШАГИ 6-8: ПРИЗЕМЛЕНИЕ -> БОЙ ---
             self.no_targets_timer = None
             state.combat_mode_active = "COMBAT"
-            # NPC уже видны в овервью, но корабль ещё в варпе: захват цели
-            # начинаем ТОЛЬКО после смены статуса (выхода из варпа)
+            # NPC уже видны, но корабль ещё в варпе: ждём выхода из варпа
             if state.is_warp:
                 self._vlog_throttled('c_warpwait',
                                      "combat: NPC в овервью, но статус WARP — "
                                      "жду выхода из варпа")
                 return
-            # Мы прибыли на аномалию — фиксируем визит и начинаем бой
+            # Прибыли на аномалию — фиксируем визит и начинаем бой
             if self._current_anom:
                 self._visited_anoms[self._current_anom] = time.time()
                 print(f"[Mission] Прибыли на '{self._current_anom}' — начинаю бой")
                 self._reset_mission()
             self._combat_logic()
         else:
-            # Целей нет — проверяем, нужно ли возвращать дронов
+            # --- ШАГ 5: ВАРП В АНОМАЛИЮ (двигатель ВЫКЛ перед варпом) ---
             self._handle_drones_recall()
-            # Если все дроны собраны — фаза дронов и FSM цели сбрасываются
             if state.drones_in_space == 0:
                 self._drone_phase = 'FIGHTING'
                 self._combat_step = 'IDLE'
                 self._lock_attempts = 0
             state.combat_mode_active = "SCANNING"
-            # Миссия: выбрать аномалию из probe scanner и варпнуться на неё
             self._find_new_anomaly(state)
 
+    def _undock(self, state, off_x, off_y, now_mono):
+        """Шаг 1 (часть): андок из станции кликом по кнопке Undock в UI.
+
+        Вызывается, когда корабль в доке и локал безопасен. Анти-спам:
+        повторный клик не чаще undock_cooldown секунд (андок занимает время).
+        """
+        btn = getattr(state, 'undock_button', None)
+        if not btn:
+            self._vlog_throttled('m_no_undock',
+                                 "undock: кнопка Undock не найдена в UI (ещё док?)")
+            return
+        if now_mono - self._last_undock_ts < self.cfg['undock_cooldown']:
+            self._vlog("undock: жду кулдаун клика Undock")
+            return
+        self._last_undock_ts = now_mono
+        print(f"[Mission] В доке и безопасно — андок (клик Undock "
+              f"@ {btn['x']},{btn['y']})")
+        self._click_at((btn.get('x') or 0) + off_x, (btn.get('y') or 0) + off_y)
+
+    def _ensure_probe_scanner(self, state, now_mono):
+        """Шаг 2 пайплайна: открыть окно Probe Scanner (Alt+P), если его нет.
+
+        Если окна нет и мы не в доке (нужны аномалии) — нажимаем Alt+P
+        не чаще probe_open_timeout, ожидая появления окна в UI.
+        """
+        if getattr(state, 'probe_scanner_open', False):
+            self._probe_opening = False
+            return
+        if not self._probe_opening:
+            print("[Mission] Окно Probe Scanner закрыто — открываю (Alt+P)")
+            pyautogui.hotkey('alt', 'p')
+            self._probe_opening = True
+            self._probe_open_ts = now_mono
+            return
+        # Окно ещё не появилось — ждём и по таймауту пробуем снова
+        if now_mono - self._probe_open_ts >= self.cfg['probe_open_timeout']:
+            self._probe_opening = False
+
     def _ensure_modules_on(self, state, off_x, off_y, now):
-        """Контроль критичных модулей: репка и двигатель (afterburner/MWD).
+        """Шаги 3-4 пайплайна: контроль repair module и двигателя.
 
-        Запускается на каждом тике в любом состоянии (после андока, перед
-        варпом в аномалию, в варпе, в бою), КРОМЕ дока и экрана загрузки
-        (там HUD-модулей нет). Репка держится включённой и в варпе (циклит),
-        двигатель — только вне варпа: в варпе он бесполезен, EVE сама
-        выключает его на входе в варп, включим после выхода.
+        РЕПКА: держится включённой всегда (кроме дока), в т.ч. в варпе
+        (циклит). Если репки НЕТ на корабле — алерт в лог РОВНО 1 раз.
 
-        Модуль включается КЛИКОМ по его иконке в HUD: у средних и нижних
-        слотов нет дефолтных хоткеев (F1..F8 только у высоких). Повторный
-        клик защищён кулдауном — повторное нажатие ВЫКЛЮЧАЕТ модуль.
+        ДВИГАТЕЛЬ: включается ТОЛЬКО в бою (state.npc_all). До боя и во
+        время полёта к аномалии двигатель не включается (на старте
+        любого полёта он выключен; перед варпом — выключается принудительно
+        через _disable_engine). Если двигателя нет на корабле — алерт
+        в лог РОВНО 1 раз.
 
-        Двигатель не включается обратно в окне prop_keep_off_time после
-        его выключения перед варпом (см. _disable_engine) — иначе
-        автоконтроль отменит подготовку к варпу.
+        Модуль включается КЛИКОМ по его иконке в HUD: у средних/нижних слотов
+        нет дефолтных хоткеев (F1..F8 только у высоких). Повторный клик
+        защищён кулдауном — повторное нажатие ВЫКЛЮЧАЕТ модуль.
         """
         if getattr(state, 'is_docked', False) or getattr(state, 'is_loading', False):
             self._was_docked = True
             return
 
-        # Задача: контроль модуля ремонта, когда корабль НЕ в доке.
-        #   - репка есть и READY -> включается выше (клик по иконке);
-        #   - репки нет вообще -> предупреждение в лог: сразу после андока
-        #     (переход docked -> undocked) и далее не чаще
-        #     repair_missing_warn_interval секунд.
         repairers = getattr(state, 'repairers', {}) or {}
-        is_docked = getattr(state, 'is_docked', False)
+        prop_modules = getattr(state, 'prop_modules', {}) or {}
+
+        # 1. Алерты об отсутствии критичных модулей (1 раз, не спамим)
         if not repairers:
-            undocked_now = self._was_docked and not is_docked
-            if undocked_now or now - self._repair_missing_warn_ts >= self.cfg.get('repair_missing_warn_interval', 60.0):
-                self._repair_missing_warn_ts = now
+            if not self._warned_repair_missing:
+                self._warned_repair_missing = True
                 print("[Bot][WARNING] Модуль ремонта не найден (REPAIR: NOT FOUND) — "
                       "проверь фит: чинить некому, контроль репки невозможен")
-        self._was_docked = is_docked
+        if not prop_modules:
+            if not self._warned_prop_missing:
+                self._warned_prop_missing = True
+                print("[Bot][WARNING] Двигатель (afterburner/MWD) не найден "
+                      "(PROP: NOT FOUND) — проверь фит: нет propulsion-модуля")
 
-        # 1. Репка — всегда включена (кроме дока, работает и в варпе)
-        for name, status in (getattr(state, 'repairers', {}) or {}).items():
+        # 2. Репка — всегда включена (кроме дока, работает и в варпе)
+        for name, status in repairers.items():
             if status != 'READY':
                 continue
             if self._toggle_hud_module(state, name, off_x, off_y, now):
                 print(f"[Bot] Репка {name} выключена — включаю (клик по иконке)")
                 return   # один модуль за тик, остальное — на следующих тиках
 
-        # 2. Двигатель (afterburner/MWD) — всегда включён вне варпа, КРОМЕ:
-        #    - самого варпа/выхода на варп (is_warp/is_establishing);
-        #    - окна после выключения двигателя перед варпом (_disable_engine).
+        # 3. Двигатель (afterburner/MWD) — ТОЛЬКО в бою (корабль у цели).
+        #    Вне боя / по пути к аномалии двигатель не включаем: EVE гасит
+        #    его на входе в варп, а перед любым полётом он должен быть выключен.
+        if not state.npc_all:
+            return
         if getattr(state, 'is_warp', False) or getattr(state, 'is_establishing', False):
             return
         if now - self._prop_keep_off_ts < self.cfg['prop_keep_off_time']:
             self._vlog("modules: двигатель выключен перед варпом — не включаю обратно")
             return
-        for name, status in (getattr(state, 'prop_modules', {}) or {}).items():
+        for name, status in prop_modules.items():
             if status != 'READY':
                 continue
             if self._toggle_hud_module(state, name, off_x, off_y, now):
@@ -403,14 +492,14 @@ class EveBot:
         # Статистика: потери дронов / тревога "мало дронов"
         self._track_drones_state(state)
 
-        # а) FSM ЦЕЛИ: выбор из овервью -> орбита -> лок -> атака
+        # а) ШАГ 6: FSM ЦЕЛИ: выбор из овервью -> орбита -> лок -> атака
         self._target_fsm(state, off_x, off_y, now)
 
-        # б) Focus fire среди захваченных целей (фрегаты-скрамеры первыми)
+        # б) ШАГ 7: Focus fire среди захваченных целей (фрегаты-скрамеры первыми)
         if state.targets:
             self._focus_fire(state, off_x, off_y, now)
 
-        # в) Атака до уничтожения цели: поддерживаем цикл оружия
+        # в) ШАГ 8: Атака до уничтожения цели: поддерживаем цикл оружия
         self._attack_until_dead(state, now)
 
         # г) ДРОНЫ: цикл выживания (только режим DRONES и только в бою)
@@ -916,7 +1005,7 @@ class EveBot:
         self._submenu_seen_ts = None
 
     def _find_new_anomaly(self, state):
-        """Миссия: берём аномалию из списка окна Probe Scanner и летим на неё.
+        """Шаг 5 пайплайна: берём аномалию из списка Probe Scanner и варимся.
 
         Последовательность: ПКМ по строке аномалии -> в контекстном меню
         клик 'Warp to Location' -> если раскрылось подменю дистанций —

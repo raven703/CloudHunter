@@ -76,6 +76,8 @@ class ParsedUIState:
     # === ПРОБ-СКАНЕР ===
     scan_results: List[Dict[str, Any]] = field(default_factory=list)
     # [{"id": str, "name": str, "group": str, "distance": str, "signal": str, "type": str, "x": int, "y": int}]
+    probe_scanner_open: bool = False          # окно Probe Scanner открыто (для Alt+P, если нет)
+    undock_button: Optional[Dict[str, Any]] = None  # {'x','y','w','h'} — кнопка Undock (абсолютные коорд.)
     
     # === ИНФО-ПАНЕЛЬ (SidePanel) ===
     current_system: str = ""

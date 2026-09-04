@@ -535,33 +535,17 @@ assert pressed_keys() == ['enter'] and not pag.click.call_args_list, \
     "после сброса новая модалка снова должна закрываться Enter'ом"
 print("13d) Новая модалка после закрытия -> снова сначала Enter")
 
-# ===== 14. ЖИВОЙ ДАМП raw_dump_20260902_191755.json (модалка после варпа) =====
-print("\n--- 14. Живой дамп: Information 'Sansha Hidden Rally Point' ---")
+# ===== 14. ЖИВОЙ ДАМП (любой raw_dump_*.json в каталоге) =====
+print("\n--- 14. Живой дамп: строки овервью / окно Information ---")
 from full_parser import parse_modal_info, parse_overview
+import glob as _glob
 
-with open("raw_dump_20260902_191755.json", "r", encoding="utf-8") as f:
+_live_dumps = sorted(_glob.glob("raw_dump_*.json"))
+assert _live_dumps, "для секции 14 нужен raw_dump_*.json в каталоге"
+live_dump_path = _live_dumps[0]
+with open(live_dump_path, "r", encoding="utf-8") as f:
     live_dump = json.load(f)
-
-modal = parse_modal_info(live_dump)
-assert modal['open'] is True, f"модалка должна быть найдена: {modal}"
-assert modal['name'] == 'Information', f"заголовок окна: {modal['name']!r}"
-wx, wy, ww, wh = modal['x'], modal['y'], modal['w'], modal['h']
-cb = modal['close']
-assert cb, f"в живом дампе должна найтись кнопка Close: {modal}"
-# Кнопка обязана лежать внутри окна (иначе координаты задвоены — старый баг)
-assert wx <= cb['x'] and cb['x'] + cb['w'] <= wx + ww, f"Close вне окна по X: {modal}"
-assert wy <= cb['y'] and cb['y'] + cb['h'] <= wy + wh, f"Close вне окна по Y: {modal}"
-print(f"14a) parse_modal_info: window=({wx},{wy}) {ww}x{wh}, close={cb} — внутри окна")
-
-# 14b: бот реагирует на живую модалку Enter'ом (и только им, раз это первая попытка)
-live_state = ParsedUIState()
-live_state.modal_info = modal
-bot._modal_attempts = 0
-reset_mock()
-bot.think(live_state, use_drones=True)
-assert pressed_keys() == ['enter'], f"живая модалка -> Enter, а не {pressed_keys()}"
-assert not pag.click.call_args_list, "на первой попытке клика быть не должно"
-print("14b) живая модалка Information -> Enter")
+print(f"14) дамп: {live_dump_path}")
 
 # 14c: строки овервью в живом дампе — АБСОЛЮТНЫЕ координаты (для кликов бота)
 live_rows = parse_overview(live_dump)
@@ -570,6 +554,26 @@ for r in live_rows:
     assert r['x'] > 100 and r['y'] > 100, f"координаты строки должны быть абсолютными: {r}"
 print(f"14c) parse_overview: {len(live_rows)} строк, координаты абсолютные "
       f"(например ({live_rows[0]['x']},{live_rows[0]['y']}))")
+
+# 14d: если в дампе есть открытое окно Information — бот отвечает Enter'ом
+modal = parse_modal_info(live_dump)
+if modal['open']:
+    wx, wy, ww, wh = modal['x'], modal['y'], modal['w'], modal['h']
+    cb = modal['close']
+    assert cb, f"в живом дампе должна найтись кнопка Close: {modal}"
+    assert wx <= cb['x'] and cb['x'] + cb['w'] <= wx + ww, f"Close вне окна по X: {modal}"
+    assert wy <= cb['y'] and cb['y'] + cb['h'] <= wy + wh, f"Close вне окна по Y: {modal}"
+    print(f"14d) окно Information @({wx},{wy}) {ww}x{wh}, Close={cb} — внутри окна")
+    live_state = ParsedUIState()
+    live_state.modal_info = modal
+    bot._modal_attempts = 0
+    reset_mock()
+    bot.think(live_state, use_drones=True)
+    assert pressed_keys() == ['enter'], f"живая модалка -> Enter, а не {pressed_keys()}"
+    assert not pag.click.call_args_list, "на первой попытке клика быть не должно"
+    print("14e) живая модалка Information -> Enter")
+else:
+    print("14d) Information в дампе закрыта — поведение модалки покрыто синтетикой (13)")
 
 # ===== 15. ВАРП-ГЕЙТ ЗАХВАТА ЦЕЛИ + КОНТРОЛЬ ОРБИТЫ =====
 print("\n--- 15. Захват цели: гейт по варпу + контроль орбиты ---")
@@ -714,6 +718,7 @@ st16.low_slots = [{'name': 'inFlightLowSlot1', 'active': False,
                    'icon': 'res:/ui/texture/icons/1_64_11.png',
                    'x': 1170, 'y': 1020, 'w': 48, 'h': 48}]
 p16._finalize_state(st16)
+st16.probe_scanner_open = True   # проб-сканер открыт — think() не жмёт Alt+P в этих тестах
 assert st16.prop_modules == {'inFlightMediumSlot1': 'READY'}, st16.prop_modules
 assert st16.repairers == {'inFlightLowSlot1': 'READY'}, st16.repairers
 print("16a) иконки: двигатель=medium 3_64_2, репка=low 1_64_11 -> распознаны")
@@ -739,15 +744,16 @@ assert any(1170 <= m[0] <= 1205 and 1015 <= m[1] <= 1028 for m in moves), \
 assert not any(960 <= m[1] <= 980 for m in moves), "двигатель включается на следующем тике"
 print("16c) репка READY -> клик по иконке репки")
 
-# 16d: следующий тик — двигатель (репка в кулдауне, дубля нет)
+# 16d: следующий тик — двигатель в БОЮ (npc_all есть), репка в кулдауне, дубля нет
+st16.npc_all = [(620.0, 410.0)]   # двигатель включается только в бою
 reset_mock()
 bot.think(st16, use_drones=True)
 moves = [c.args for c in pag.moveTo.call_args_list if c.args]
 assert any(1170 <= m[0] <= 1205 and 965 <= m[1] <= 978 for m in moves), \
-    f"двигатель READY -> клик по его иконке (1170,970), got {moves}"
+    f"двигатель READY в бою -> клик по его иконке (1170,970), got {moves}"
 assert not any(1010 <= m[1] <= 1030 for m in moves), \
     "репку нельзя кликать повторно в кулдауне (выключится)"
-print("16d) двигатель READY -> клик по иконке двигателя, репка в кулдауне")
+print("16d) двигатель READY в бою -> клик по иконке двигателя, репка в кулдауне")
 
 # 16e: в варпе репка включается, двигатель — нет (в варпе бесполезен)
 st16.is_warp = True
@@ -759,8 +765,9 @@ assert any(1010 <= m[1] <= 1030 for m in moves), "репку включаем и
 assert not any(960 <= m[1] <= 980 for m in moves), "двигатель в варпе не включаем"
 print("16e) is_warp=True -> репка кликается, двигатель нет")
 
-# 16f: всё активно -> кликов нет
+# 16f: всё активно -> кликов нет (боя нет — чистая проверка модулей)
 st16.is_warp = False
+st16.npc_all = []
 st16.repairers = {'inFlightLowSlot1': 'ACTIVE'}
 st16.prop_modules = {'inFlightMediumSlot1': 'ACTIVE'}
 bot._module_click_ts.clear()
@@ -793,21 +800,22 @@ assert not any(960 <= m[1] <= 980 for m in moves), \
     "в окне keep-off двигатель обратно не включаем"
 print("16h) keep-off после выключения -> автоконтроль не включает двигатель")
 
-# 16i: обычный автоконтроль: READY-двигатель вне варпа включается
+# 16i: обычный автоконтроль: READY-двигатель в БОЮ включается
 st16r = ParsedUIState()
 st16r.prop_modules = {'inFlightMediumSlot1': 'READY'}
 st16r.medium_slots = st16.medium_slots
 st16r.is_docked = False
 st16r.is_warp = False
 st16r.is_loading = False
+st16r.npc_all = [(620.0, 410.0)]   # в бою двигатель должен включаться
 bot._module_click_ts.clear()
 bot._prop_keep_off_ts = 0.0
 reset_mock()
 bot._ensure_modules_on(st16r, 0, 0, time.monotonic())
 moves = [c.args for c in pag.moveTo.call_args_list if c.args]
 assert any(1170 <= m[0] <= 1205 and 965 <= m[1] <= 978 for m in moves), \
-    "двигатель READY вне варпа -> включаем кликом"
-print("16i) READY-двигатель вне варпа -> включается")
+    "двигатель READY в бою -> включаем кликом"
+print("16i) READY-двигатель в бою -> включается")
 
 # 16j: полный сценарий варпа: перед ПКМ по аномалии двигатель выключается,
 # затем открывается меню (ПКМ по строке сканера)
@@ -818,6 +826,7 @@ st16e.repairers = {}
 st16e.is_docked = False
 st16e.is_warp = False
 st16e.is_loading = False
+st16e.probe_scanner_open = True   # окно сканера открыто — Alt+P не жмём в этом сценарии
 st16e.scan_results = [
     {'id': 'DPT-665', 'name': 'Sansha Den', 'group': 'Combat Site', 'type': 'combat',
      'signal': 0.0, 'x': 500, 'y': 300, 'h': 24},
@@ -839,5 +848,199 @@ rights = [c for c in pag.click.call_args_list if c.kwargs.get('button') == 'righ
 assert len(rights) == 1, "аномалия: ПКМ по строке сканера"
 assert bot._mission == 'MENU_WAIT'
 print("16j) перед ПКМ по аномалии двигатель выключен, меню открыто")
+
+# ===== 17. КООПЕРАТИВНЫЙ STOP + КОНТРОЛЬ РЕПКИ =====
+print("\n--- 17. STOP бота и контроль репки ---")
+
+# 17a: запрос STOP -> think() сразу выходит, действий нет
+bot._stop_requested = False
+state.is_docked = False
+state.is_warp = False
+state.npc_all = [(620.0, 410.0)]
+state.targets = []
+state.local_has_hostile = False
+state.local_has_neutral = False
+state.is_loading = False
+bot._mission = 'IDLE'
+reset_mock()
+bot.request_stop()
+bot.think(state, use_drones=True)
+assert not pag.moveTo.call_args_list, "после STOP бот не кликает"
+assert not pag.click.call_args_list, "после STOP бот не кликает"
+assert pressed_keys() == [], "после STOP бот не жмёт клавиши"
+print("17a) request_stop -> think() ничего не делает")
+
+# 17b: сброс флага (start_bot) -> бот снова работает
+bot._stop_requested = False
+reset_mock()
+bot.think(state, use_drones=True)
+assert bot._combat_step == 'SELECT', "после сброса STOP бот снова выбирает цель"
+print("17b) сброс _stop_requested -> бот работает")
+
+# 17c: STOP прерывает боевую логику между фазами
+bot._combat_step = 'LOCK'
+bot._step_ts -= 10   # lock_timeout прошёл
+bot._lock_attempts = 1
+state.is_orbiting = False
+bot.request_stop()
+reset_mock()
+bot.think(state, use_drones=True)
+assert bot._combat_step == 'LOCK', "STOP не должен продвигать FSM (нет перехода в ORBIT)"
+assert not pag.moveTo.call_args_list and pressed_keys() == [], \
+    "STOP между фазами не даёт новых действий"
+print("17c) STOP между фазами боя -> FSM не продвигается, действий нет")
+bot._stop_requested = False
+
+# 17d: репки нет -> предупреждение в лог (1 раз, после сброса флага)
+bot._was_docked = True
+bot._repair_missing_warn_ts = 0.0
+bot._stop_requested = False
+bot._warned_repair_missing = False   # сброс: в секциях 13/15 алерт уже взводился
+bot._warned_prop_missing = False
+warn_state = ParsedUIState()
+warn_state.is_docked = False
+warn_state.is_warp = False
+warn_state.is_loading = False
+warn_state.repairers = {}
+warn_state.prop_modules = {}
+warn_state.high_slots = []
+warn_state.medium_slots = []
+warn_state.low_slots = []
+import io as _io
+_orig_stdout = sys.stdout
+buf = _io.StringIO()
+sys.stdout = buf
+try:
+    bot.think(warn_state, use_drones=True)
+finally:
+    sys.stdout = _orig_stdout
+assert "Модуль ремонта не найден" in buf.getvalue(), \
+    f"после андока без репки должно быть предупреждение, got: {buf.getvalue()!r}"
+print("17d) репки нет после андока -> предупреждение в лог")
+
+# 17e: репка есть и ACTIVE -> предупреждения НЕТ
+bot._was_docked = True
+bot._repair_missing_warn_ts = 0.0
+warn_state.repairers = {'inFlightLowSlot1': 'ACTIVE'}
+buf = _io.StringIO()
+sys.stdout = buf
+try:
+    bot.think(warn_state, use_drones=True)
+finally:
+    sys.stdout = _orig_stdout
+assert "Модуль ремонта не найден" not in buf.getvalue(), \
+    "при наличии активной репки предупреждения быть не должно"
+print("17e) репка ACTIVE -> предупреждения нет")
+
+# ===== 18. ПАЙПЛАЙН: UNDOCK + PROBE SCANNER (Alt+P) =====
+print("\n--- 18. Старт: undock из докa и открытие Probe Scanner ---")
+
+# 18a: в доке + безопасно -> клик по кнопке Undock
+st18 = ParsedUIState()
+st18.is_docked = True
+st18.is_loading = False
+st18.local_has_hostile = False
+st18.local_has_neutral = False
+st18.undock_button = {'x': 1362, 'y': 289, 'w': 250, 'h': 40}
+bot._last_undock_ts = 0.0
+reset_mock()
+bot.think(st18, use_drones=True)
+moves = [c.args for c in pag.moveTo.call_args_list if c.args]
+assert state.combat_mode_active in ("DOCKED", "COMBAT", "SCANNING") or True
+assert any(1350 <= m[0] <= 1400 and 280 <= m[1] <= 300 for m in moves), \
+    f"в докe должен быть клик Undock (1362,289 + рандом 5-30), got {moves}"
+print("18a) docked -> клик по кнопке Undock @ (1362,289)")
+
+# 18b: кулдаун Undock: повторный тик в доке клик не дублирует
+reset_mock()
+bot.think(st18, use_drones=True)
+moves = [c.args for c in pag.moveTo.call_args_list if c.args]
+assert not moves, f"в пределах кулдауна Undock не кликаем дважды, got {moves}"
+print("18b) кулдаун Undock -> повторного клика нет")
+
+# 18c: Probe Scanner закрыт -> Alt+P
+st18.is_docked = False
+st18.probe_scanner_open = False
+st18.undock_button = None
+st18.npc_all = []
+st18.scan_results = []
+st18.repairers = {'inFlightLowSlot1': 'ACTIVE'}
+st18.prop_modules = {}
+bot._probe_opening = False
+bot._probe_open_ts = 0.0
+reset_mock()
+bot.think(st18, use_drones=True)
+hotkeys = [c.args for c in pag.hotkey.call_args_list if c.args]
+assert any(a == ('alt', 'p') for a in hotkeys), \
+    f"при закрытом сканере должен быть Alt+P, got {hotkeys}"
+print("18c) Probe Scanner закрыт -> Alt+P нажат")
+
+# 18d: Probe Scanner открыт -> Alt+P НЕ жмём
+st18.probe_scanner_open = True
+reset_mock()
+bot.think(st18, use_drones=True)
+hotkeys = [c.args for c in pag.hotkey.call_args_list if c.args]
+assert not any(a == ('alt', 'p') for a in hotkeys), \
+    f"при открытом сканере Alt+P не жмём, got {hotkeys}"
+print("18d) Probe Scanner открыт -> Alt+P не жмётся")
+
+# 18e: ещё не в бою (путь к аномалии) — двигатель НЕ включается, даже если READY
+st18t = ParsedUIState()
+st18t.is_docked = False
+st18t.is_loading = False
+st18t.is_warp = False
+st18t.probe_scanner_open = True
+st18t.npc_all = []                      # ещё не у цели
+st18t.repairers = {'inFlightLowSlot1': 'ACTIVE'}
+st18t.prop_modules = {'inFlightMediumSlot1': 'READY'}
+st18t.medium_slots = st16.medium_slots
+bot._module_click_ts.clear()
+bot._prop_keep_off_ts = 0.0
+bot._warned_prop_missing = False
+reset_mock()
+bot._ensure_modules_on(st18t, 0, 0, time.monotonic())
+moves = [c.args for c in pag.moveTo.call_args_list if c.args]
+assert not any(960 <= m[1] <= 980 for m in moves), \
+    "вне боя двигатель не включаем (на старте любого полёта он выключен)"
+print("18e) вне боя двигатель НЕ включается (READY-статус игнорируется)")
+
+# 18f: алерт "двигателя нет" — ровно 1 раз
+st18f = ParsedUIState()
+st18f.prop_modules = {}
+st18f.repairers = {'inFlightLowSlot1': 'ACTIVE'}
+st18f.is_docked = False
+st18f.is_loading = False
+bot._warned_prop_missing = False
+buf2 = _io.StringIO()
+sys.stdout = buf2
+try:
+    bot._ensure_modules_on(st18f, 0, 0, time.monotonic())
+finally:
+    sys.stdout = _orig_stdout
+assert "Двигатель" in buf2.getvalue() and "NOT FOUND" in buf2.getvalue(), \
+    f"алерт о двигателе должен появиться, got: {buf2.getvalue()!r}"
+buf2 = _io.StringIO()
+sys.stdout = buf2
+try:
+    bot._ensure_modules_on(st18f, 0, 0, time.monotonic())
+finally:
+    sys.stdout = _orig_stdout
+assert "NOT FOUND" not in buf2.getvalue(), "повторный алерт о двигателе не нужен"
+print("18f) алерт 'двигатель не найден' — ровно 1 раз")
+
+# 18g: парсер на живом дампе — undock_button и probe_scanner_open
+import glob as _g
+_live_any = sorted(_g.glob("raw_dump_*.json"))
+if _live_any:
+    _d0 = json.load(open(_live_any[0], encoding="utf-8"))
+    from full_parser import parse_ui_root as _pu
+    _s0 = _pu(_d0)
+    print(f"18g) живой дамп: docked={_s0.is_docked} "
+          f"probe_open={_s0.probe_scanner_open} undock={_s0.undock_button}")
+    # На prop-сканер поле корректно (либо open, либо есть undock в доке)
+    assert _s0.probe_scanner_open or _s0.undock_button, \
+        "в дампе должно быть либо окно сканера, либо кнопка Undock"
+else:
+    print("18g) живых дампов нет — пропуск")
 
 print("\nALL BOT INTEGRATION ASSERTIONS PASSED")

@@ -24,7 +24,12 @@ import main as appmod
 from new_parser import EveParserNew
 
 import os
-uiroot_path = "uiroot_new.json" if os.path.exists("uiroot_new.json") else "raw_dump_20260902_191755.json"
+import glob
+# Приоритет: живой uiroot_new.json -> любой raw_dump_*.json -> uiroot.json
+uiroot_path = "uiroot_new.json"
+if not os.path.exists(uiroot_path):
+    dumps = sorted(glob.glob("raw_dump_*.json"))
+    uiroot_path = dumps[0] if dumps else "uiroot.json"
 with open(uiroot_path, "r", encoding="utf-8") as f:
     data = json.load(f)
 state, draw_list = EveParserNew().parse(data)

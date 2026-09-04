@@ -1507,6 +1507,36 @@ def parse_local_chat(root: Dict) -> Dict[str, Any]:
     return result
 
 
+# ==================== ПАРСЕР КНОПКИ UNDOCK ====================
+
+def parse_undock_button(root: Dict) -> Optional[Dict]:
+    """Координаты кнопки Undock (станция, экран дока).
+
+    Накапливаем _displayX/_displayY от корня (как в parse_modules):
+      {'x': центрX, 'y': центрY, 'w': ширина, 'h': высота}
+    или None, если кнопки нет в дереве.
+    """
+    result: Optional[Dict] = None
+
+    def walk(node: Dict, px: float, py: float) -> None:
+        nonlocal result
+        if not isinstance(node, dict) or result is not None:
+            return
+        ei = node.get('dictEntriesOfInterest', {}) or {}
+        ax = px + get_val(ei.get('_displayX'))
+        ay = py + get_val(ei.get('_displayY'))
+        if node.get('pythonObjectTypeName') == 'UndockButton':
+            w = get_val(ei.get('_displayWidth'))
+            h = get_val(ei.get('_displayHeight'))
+            result = {'x': ax + w // 2, 'y': ay + h // 2, 'w': w, 'h': h}
+            return
+        for child in node.get('children', []) or []:
+            walk(child, ax, ay)
+
+    walk(root, 0, 0)
+    return result
+
+
 # ==================== ПАРСЕР ПРОБ-СКАНЕРА ====================
 
 def parse_scan_results(root: Dict) -> List[Dict]:
@@ -1849,6 +1879,10 @@ def parse_ui_root(json_data: Dict) -> ParsedUIState:
     
     # ====== ПРОБ-СКАНЕР ======
     state.scan_results = parse_scan_results(root)
+    # Окно Probe Scanner открыто? (если нет — бот нажмёт Alt+P)
+    state.probe_scanner_open = find_first_by_type(root, 'ProbeScannerWindow') is not None
+    # Кнопка Undock (станция) — для автоматического андока
+    state.undock_button = parse_undock_button(root)
     
     # ====== ИНФО-ПАНЕЛЬ ======
     panel_data = parse_side_panel(root)

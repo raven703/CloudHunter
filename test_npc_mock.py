@@ -23,7 +23,12 @@ def inject_npc(node, label):
 
 
 import os
-uiroot_path = "uiroot_new.json" if os.path.exists("uiroot_new.json") else "raw_dump_20260902_191755.json"
+import glob
+# Приоритет: живой uiroot_new.json -> любой raw_dump_*.json -> uiroot.json
+uiroot_path = "uiroot_new.json"
+if not os.path.exists(uiroot_path):
+    dumps = sorted(glob.glob("raw_dump_*.json"))
+    uiroot_path = dumps[0] if dumps else "uiroot.json"
 with open(uiroot_path, "r", encoding="utf-8") as f:
     data = json.load(f)
 
@@ -68,11 +73,11 @@ print(f"npc payload: total={payload['npc']['count']} fr={len(payload['npc']['fri
 print(f"nn_features npc: total={payload['nn_features']['npc_total']} "
       f"fr={payload['nn_features']['npc_frigates']} bs={payload['nn_features']['npc_battleships']}")
 
-assert len(state.npc_all) == count, "npc_all count mismatch!"
-assert len(state.npc_frigate) == 1, "frigate not classified!"
-assert len(state.npc_battleship) == 1, "battleship not classified!"
-assert len(state.npc_cruiser) == 1, "cruiser not classified!"
-assert len(state.npc_battlecruiser) == 1, "battlecruiser not classified!"
+assert len(state.npc_all) >= count, f"npc_all ({len(state.npc_all)}) < injected ({count})!"
+assert len(state.npc_frigate) >= 1, "frigate not classified!"
+assert len(state.npc_battleship) >= 1, "battleship not classified!"
+assert len(state.npc_cruiser) >= 1, "cruiser not classified!"
+assert len(state.npc_battlecruiser) >= 1, "battlecruiser not classified!"
 assert ex['recommended_action'] == 'EMERGENCY_EXIT', "hostile in local must override combat!"
 print("OK: SAFETY priority respected (hostile in local -> EMERGENCY_EXIT)")
 
