@@ -692,21 +692,19 @@ class EveBot:
     # ==================== ЦЕЛИ: ПРИОРИТЕТЫ И ФОКУС ====================
 
     def _npc_class_map(self, state):
-        """Имя записи овервью -> класс NPC ('FRIGATE', ...)."""
+        """Имя NPC -> класс. Строим по overview_entries через сопоставление
+        с координатами npc_frigate (позиции совпадают с иконками овервью)."""
         cmap = {}
+        frig = set((round(x), round(y)) for x, y in (state.npc_frigate or []))
         for e in getattr(state, 'overview_entries', None) or []:
             name = str(e.get('name') or '').strip()
-            cls = e.get('npc_class')
-            if name and cls:
-                cmap[name] = cls
+            if not name:
+                continue
+            key = (round(e.get('x') or 0), round(e.get('y') or 0))
+            cmap[name] = 'FRIGATE' if key in frig else 'NPC'
         return cmap
 
     def _target_is_frigate(self, target, cmap):
-        """Является ли захваченная цель NPC-фрегатом (скрам-угроза).
-
-        Сопоставляем имя цели из панели лока с именами записей овервью,
-        у которых парсер определил npc_class.
-        """
         tname = str(target.get('name') or '').strip()
         if not tname:
             return False

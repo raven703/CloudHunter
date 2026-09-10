@@ -16,7 +16,7 @@ import sys
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
-from full_parser import parse_hp_gauges, find_first_by_type  # noqa: E402
+from parser import parse_hp_gauges, find_first_by_type  # noqa: E402
 
 
 def _fmt(v):

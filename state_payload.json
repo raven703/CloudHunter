@@ -1,8 +1,8 @@
 {
   "meta": {
     "schema_version": 1,
-    "timestamp": 1789059559.112,
-    "datetime": "2026-09-10 19:59:19",
+    "timestamp": 1789067004.595,
+    "datetime": "2026-09-10 22:03:24",
     "window": {
       "width": 1497,
       "height": 1001
@@ -21,64 +21,37 @@
   },
   "ship": {
     "hp": {
-      "shield_pct": 74.0,
-      "armor_pct": 100.0,
-      "structure_pct": 100.0,
-      "capacitor_pct": 38.9
+      "shield_pct": null,
+      "armor_pct": null,
+      "structure_pct": null,
+      "capacitor_pct": null
     },
     "speed_mps": 0.0,
     "movement": {
-      "is_warp": true,
+      "is_warp": false,
       "is_establishing": false,
       "is_orbiting": false,
-      "is_docked": false,
-      "state": "WARP"
+      "is_docked": true,
+      "state": "DOCKED"
     },
     "is_pvp": false
   },
   "modules": {
-    "status": {
-      "inFlightLowSlot1": "ACTIVE",
-      "inFlightMediumSlot2": "READY"
-    },
-    "repairers": {
-      "inFlightLowSlot1": "ACTIVE"
-    },
-    "prop_modules": {
-      "inFlightMediumSlot2": "READY"
-    },
+    "status": {},
+    "repairers": {},
+    "prop_modules": {},
     "high_slots": [],
-    "medium_slots": [
-      {
-        "name": "inFlightMediumSlot2",
-        "active": false,
-        "icon": "res:/ui/texture/icons/3_64_2.png",
-        "x": 921,
-        "y": 856,
-        "w": 48,
-        "h": 48
-      }
-    ],
-    "low_slots": [
-      {
-        "name": "inFlightLowSlot1",
-        "active": true,
-        "icon": "res:/ui/texture/icons/1_64_11.png",
-        "x": 870,
-        "y": 856,
-        "w": 48,
-        "h": 48
-      }
-    ]
+    "medium_slots": [],
+    "low_slots": []
   },
   "drones": {
-    "in_bay": 5,
+    "in_bay": 0,
     "in_space": 0,
-    "max": 5,
+    "max": 0,
     "idle": false,
     "fighting": false,
     "returning": false,
-    "under_attack": true,
+    "under_attack": false,
     "entries": []
   },
   "targets": {
@@ -103,52 +76,7 @@
   },
   "overview": [],
   "selected_item": null,
-  "scanner": [
-    {
-      "id": "OBT-172",
-      "name": "Sansha Hidden Hub",
-      "group": "Combat Site",
-      "distance": 3481142451189.0,
-      "signal": 100.0,
-      "type": "combat",
-      "x": 446,
-      "y": 82,
-      "h": 20
-    },
-    {
-      "id": "OKW-372",
-      "name": "Sansha Hidden Hub",
-      "group": "Combat Site",
-      "distance": 1373308453026.0,
-      "signal": 0.0,
-      "type": "combat",
-      "x": 446,
-      "y": 102,
-      "h": 20
-    },
-    {
-      "id": "SFK-740",
-      "name": "Sansha Hidden Hub",
-      "group": "Combat Site",
-      "distance": 1630616790630.0,
-      "signal": 0.0,
-      "type": "combat",
-      "x": 446,
-      "y": 122,
-      "h": 20
-    },
-    {
-      "id": "LXV-341",
-      "name": "",
-      "group": "Cosmic Signature",
-      "distance": 3377919920405.9995,
-      "signal": 0.0,
-      "type": "signature",
-      "x": 446,
-      "y": 142,
-      "h": 20
-    }
-  ],
+  "scanner": [],
   "context_menu": {
     "open": false,
     "type": "",
@@ -159,7 +87,7 @@
     "buttons": [
       {
         "name": "mail",
-        "has_notification": true,
+        "has_notification": false,
         "notification_count": 0
       },
       {
@@ -203,17 +131,12 @@
         "notification_count": 0
       },
       {
-        "name": "uicontrols.Window",
-        "has_notification": true,
-        "notification_count": 0
-      },
-      {
         "name": "form.VirtualGroupWindow",
         "has_notification": true,
         "notification_count": 0
       }
     ],
-    "clock": "16:59"
+    "clock": "19:03"
   },
   "executor": {
     "combat_mode": "IDLE",
@@ -225,22 +148,22 @@
     "reason": "no threats and no targets"
   },
   "nn_features": {
-    "hp_shield": 0.74,
-    "hp_armor": 1.0,
-    "hp_structure": 1.0,
-    "hp_capacitor": 0.3889,
+    "hp_shield": -1.0,
+    "hp_armor": -1.0,
+    "hp_structure": -1.0,
+    "hp_capacitor": -1.0,
     "speed_mps": 0.0,
-    "is_warp": 1,
+    "is_warp": 0,
     "is_establishing": 0,
     "is_orbiting": 0,
-    "is_docked": 0,
-    "drones_in_bay": 5,
+    "is_docked": 1,
+    "drones_in_bay": 0,
     "drones_in_space": 0,
-    "drones_max": 5,
+    "drones_max": 0,
     "drones_idle": 0,
     "drones_fighting": 0,
     "drones_returning": 0,
-    "drones_under_attack": 1,
+    "drones_under_attack": 0,
     "targets_locked": 0,
     "npc_total": 0,
     "npc_frigates": 0,
