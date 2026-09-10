@@ -3,13 +3,62 @@ import pygetwindow as gw
 import time
 import random
 import re
+import ctypes
 
-# keyboard — для отправки скан-кодов клавиш (работает на любой раскладке)
+# --- Нативная отправка клавиш через win32 (keybd_event + VK-коды) ---
+# Модуль keyboard не используется (проблемы с правами/хуками). VK-коды
+# НЕ зависят от раскладки: pyautogui.press('w') на RU-раскладке маппит
+# букву через VkKeyScan и не находит её, а keybd_event(0x57) жмёт
+# физическую W всегда.
+_USER32 = None
 try:
-    import keyboard as _keyboard
-    _HAS_KEYBOARD = True
-except ImportError:
-    _HAS_KEYBOARD = False
+    _USER32 = ctypes.windll.user32
+except Exception:
+    _USER32 = None  # не Windows — фолбэк на pyautogui
+
+_KEYEVENTF_KEYUP = 0x0002
+
+
+def _win_vk(key):
+    """Символ/имя клавиши -> Windows Virtual-Key код (независимо от раскладки)."""
+    k = str(key).lower()
+    if len(k) == 1:
+        if 'a' <= k <= 'z':
+            return ord(k.upper())          # 'a'..'z' -> 0x41..0x5A
+        if '0' <= k <= '9':
+            return ord(k)                  # '0'..'9' -> 0x30..0x39
+    named = {
+        'enter': 0x0D, 'return': 0x0D, 'esc': 0x1B, 'escape': 0x1B,
+        'tab': 0x09, 'space': 0x20, 'backspace': 0x08,
+        'shift': 0x10, 'ctrl': 0x11, 'control': 0x11, 'alt': 0x12,
+        'f1': 0x70, 'f2': 0x71, 'f3': 0x72, 'f4': 0x73, 'f5': 0x74,
+        'f6': 0x75, 'f7': 0x76, 'f8': 0x77,
+    }
+    return named.get(k)
+
+
+def _win_key_down(key):
+    """Зажать клавишу нативно (win32). True = отправлено."""
+    vk = _win_vk(key)
+    if vk is None or _USER32 is None:
+        return False
+    try:
+        _USER32.keybd_event(vk, 0, 0, 0)
+        return True
+    except Exception:
+        return False
+
+
+def _win_key_up(key):
+    """Отпустить клавишу нативно (win32). True = отправлено."""
+    vk = _win_vk(key)
+    if vk is None or _USER32 is None:
+        return False
+    try:
+        _USER32.keybd_event(vk, 0, _KEYEVENTF_KEYUP, 0)
+        return True
+    except Exception:
+        return False
 
 
 class EveBot:
@@ -193,28 +242,6 @@ class EveBot:
             print(f"[Bot] Ошибка при активации окна: {e}")
             return False
 
-
-    def _key_down_up(self, key: str):
-        """Нажатие клавиши через keyboard (scan-code) — работает на любой раскладке.
-
-        Для латинских букв используем виртуальный код (VK), который не зависит от
-        текущей раскладки клавиатуры (RU/EN). keyboard.press('w') не сработает,
-        если раскладка переключена на русский.
-        """
-        if not _HAS_KEYBOARD:
-            # Фолбэк на pyautogui — может не сработать на RU раскладке
-            pyautogui.press(key)
-            return
-        # Маппинг букв -> VK-коды (работают независимо от раскладки)
-        vk_map = {'w': 0x11, 'q': 0x10, 'e': 0x12, 'r': 0x13, 'a': 0x1e,
-                  's': 0x1f, 'd': 0x20, 'f': 0x21, 'g': 0x22}
-        vk = vk_map.get(key.lower())
-        if vk is not None:
-            _keyboard.press(vk)
-            time.sleep(0.05)
-            _keyboard.release(vk)
-        else:
-            pyautogui.press(key)
 
     def _overview_row_coords(self, state, target_name=None):
         """Координаты строки цели в овервью для клика (W+LMB).
@@ -595,13 +622,11 @@ class EveBot:
         return None
 
     def _press_key(self, key):
-        """Нажать клавишу через скан-код (работает на любой раскладке)."""
-        if _HAS_KEYBOARD:
-            try:
-                _keyboard.press_and_release(key)
-                return True
-            except Exception:
-                pass
+        """Нажать и отпустить клавишу (win32 VK — работает на любой раскладке)."""
+        if _win_key_down(key):
+            time.sleep(0.05)
+            _win_key_up(key)
+            return True
         try:
             pyautogui.press(key)
             return True
@@ -622,41 +647,20 @@ class EveBot:
         return True
 
     def _key_down_up(self, key):
-        """Нажать и отпустить клавишу через keyboard (scan code).
+        """Нажать и отпустить клавишу через win32 (VK-код keybd_event).
 
-        Использует scan codes — работает на любой раскладке (RU/EN).
-        pyautogui.press('w') на RU-ракладке печатает 'ц' — EVE не реагирует.
-        _keyboard.press(0x11) — scan code для W (virtual key 0x57) — работает всегда.
+        VK-коды не зависят от раскладки: keybd_event(0x57) жмёт физическую W
+        и на RU, и на EN. pyautogui.press('w') на RU-раскладке ищет букву 'w'
+        через VkKeyScan, не находит её — нажатие теряется (орбита/дроны не
+        срабатывали). Если win32 недоступен — фолбэк на pyautogui.
         """
-        # Scan codes для часто используемых клавиш (Virtual Key -> Scan Code)
-        # W = 0x11, это scan code для клавиши W (не зависит от раскладки)
-        scan_map = {
-            'w': 0x11,  # VK_W
-            'f': 0x21,  # VK_F
-            'r': 0x13,  # VK_R
-            'e': 0x12,  # VK_E
-            'q': 0x10,  # VK_Q
-            '1': 0x02,  # VK_1
-            '2': 0x03,  # VK_2
-            '3': 0x04,  # VK_3
-            '4': 0x05,  # VK_4
-            '5': 0x06,  # VK_5
-        }
-        key_lower = key.lower()
-        if key_lower in scan_map and _HAS_KEYBOARD:
-            try:
-                # Используем scan code для нажатия (работает на любой раскладке)
-                _keyboard.press(scan_map[key_lower])
-                time.sleep(0.05)
-                _keyboard.release(scan_map[key_lower])
-                return True
-            except Exception:
-                # Fallback на pyautogui если keyboard не сработал
-                pyautogui.press(key_lower)
-                return True
-        else:
-            pyautogui.press(key_lower)
+        if _win_key_down(key):
+            time.sleep(0.05)
+            _win_key_up(key)
             return True
+        # Fallback (не-Windows): pyautogui может терять буквы на RU-раскладке
+        pyautogui.press(key)
+        return True
 
     def _combat_logic(self):
         if self._stop_requested:
