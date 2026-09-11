@@ -109,6 +109,9 @@ class ParsedUIState:
     
     # === ПРОЧЕЕ ===
     is_loading: bool = False
+    lock_range_km: Optional[float] = None
+    # Максимальная дистанция захвата цели (из QuickMessage клиента),
+    # в километрах. None = клиент ещё не показывал такое сообщение.
     chat_channels: List[str] = field(default_factory=list)
     fps: int = 0
 

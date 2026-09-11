@@ -6,7 +6,7 @@
 """
 from parser import (  # noqa: F401
     parse_ui_root, parse_modal_info, npc_class_from_values,
-    parse_local_chat_new, parse_npc_lists,
+    parse_local_chat_new, parse_npc_lists, parse_quick_message,
     EveParserNew,
     STANDING_NEUTRAL, STANDING_HOSTILE, STANDING_ALLIANCE,
     STANDING_GOOD, STANDING_CORPORATION, STANDING_UNKNOWN,

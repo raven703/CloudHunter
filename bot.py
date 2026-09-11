@@ -18,6 +18,126 @@ except Exception:
 
 _KEYEVENTF_KEYUP = 0x0002
 
+# --- Win32 константы для поиска окон ---
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_TH32CS_SNAPPROCESS = 0x00000002
+_INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+_GW_OWNER = 4
+
+try:
+    _KERNEL32 = ctypes.windll.kernel32
+except Exception:
+    _KERNEL32 = None
+
+class _PROCESSENTRY32(ctypes.Structure):
+    _fields_ = [
+        ('dwSize', ctypes.c_ulong),
+        ('cntUsage', ctypes.c_ulong),
+        ('th32ProcessID', ctypes.c_ulong),
+        ('th32DefaultHeapID', ctypes.POINTER(ctypes.c_ulong)),
+        ('th32ModuleID', ctypes.c_ulong),
+        ('cntThreads', ctypes.c_ulong),
+        ('th32ParentProcessID', ctypes.c_ulong),
+        ('pcPriClassBase', ctypes.c_long),
+        ('dwFlags', ctypes.c_ulong),
+        ('szExeFile', ctypes.c_char * 260),
+    ]
+
+_WNDENUMPROC = ctypes.WINFUNCTYPE(
+    ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+
+
+def _list_exefile_pids() -> set:
+    """PID'ы всех процессов exefile.exe.
+
+    Использует CreateToolhelp32Snapshot + Process32First/Next.
+    Возвращает множество PID. На не-Windows — пустое множество.
+    """
+    if _KERNEL32 is None:
+        return set()
+    pids: set = set()
+    snap = _KERNEL32.CreateToolhelp32Snapshot(_TH32CS_SNAPPROCESS, 0)
+    if snap == _INVALID_HANDLE_VALUE or not snap:
+        return pids
+    try:
+        entry = _PROCESSENTRY32()
+        entry.dwSize = ctypes.sizeof(_PROCESSENTRY32)
+        ok = _KERNEL32.Process32First(snap, ctypes.byref(entry))
+        while ok:
+            exe = bytes(entry.szExeFile).split(b'\x00', 1)[0].lower()
+            if exe == b'exefile.exe':
+                pids.add(int(entry.th32ProcessID))
+            ok = _KERNEL32.Process32Next(snap, ctypes.byref(entry))
+    finally:
+        _KERNEL32.CloseHandle(snap)
+    return pids
+
+
+def _enum_windows_for_pid(pid: int) -> list:
+    """HWND'ы всех top-level окон, принадлежащих процессу pid.
+
+    Возвращает список HWND (int). Фильтрует невидимые окна и
+    owned-окна (у owned есть владелец — обычно служебные).
+    """
+    if _USER32 is None:
+        return []
+    result: list = []
+    def _cb(hwnd, _lparam):
+        wnd_pid = ctypes.c_ulong(0)
+        _USER32.GetWindowThreadProcessId(
+            ctypes.c_void_p(hwnd), ctypes.byref(wnd_pid))
+        if wnd_pid.value != pid:
+            return True
+        if not _USER32.IsWindowVisible(ctypes.c_void_p(hwnd)):
+            return True
+        if _USER32.GetWindow(ctypes.c_void_p(hwnd), _GW_OWNER):
+            return True
+        result.append(int(hwnd))
+        return True
+    _USER32.EnumWindows(_WNDENUMPROC(_cb), 0)
+    return result
+
+
+def _get_window_title(hwnd: int) -> str:
+    """Заголовок окна hwnd (UTF-16, до 512 символов)."""
+    if _USER32 is None:
+        return ''
+    buf = ctypes.create_unicode_buffer(512)
+    _USER32.GetWindowTextW(ctypes.c_void_p(hwnd), buf, 512)
+    return buf.value
+
+
+def _get_window_rect(hwnd: int) -> tuple:
+    """(left, top, right, bottom) окна hwnd через GetWindowRect."""
+    if _USER32 is None:
+        return (0, 0, 0, 0)
+    class _RECT(ctypes.Structure):
+        _fields_ = [('left', ctypes.c_long), ('top', ctypes.c_long),
+                    ('right', ctypes.c_long), ('bottom', ctypes.c_long)]
+    r = _RECT()
+    if not _USER32.GetWindowRect(ctypes.c_void_p(hwnd), ctypes.byref(r)):
+        return (0, 0, 0, 0)
+    return (int(r.left), int(r.top), int(r.right), int(r.bottom))
+
+# Заголовок окна EVE: 'EVE - <ИмяПерсонажа>'.
+# Имя персонажа — 1..3 слова с заглавной буквы (латиница/кириллица),
+# внутри слова допустимы буквы, цифры, '_', "'", '-'.
+# Примеры валидных: 'EVE - Nikky Naari', 'EVE - O'Brien',
+# 'EVE - Jean-Luc Picard', 'EVE - Alt'.
+# Примеры невалидных: 'EVE - EVE Online' (Online — не имя),
+# 'EVE - Launcher', 'EVE - ' (пусто).
+_EVE_WINDOW_TITLE_RE = re.compile(
+    r"^EVE\s+-\s+"
+    r"[A-ZА-ЯЁ][A-Za-zА-Яа-яЁё0-9_'\-]*"
+    r"(?:\s+[A-ZА-ЯЁ][A-Za-zА-Яа-яЁё0-9_'\-]*){0,2}"
+    r"$"
+)
+
+# Явные исключения — служебные окна, а не персонажи.
+_EVE_WINDOW_TITLE_BLACKLIST = {
+    'eve online', 'launcher', 'client', 'eve launcher',
+}
+
 
 def _win_vk(key):
     """Символ/имя клавиши -> Windows Virtual-Key код (независимо от раскладки)."""
@@ -69,7 +189,12 @@ class EveBot:
         self._warned_no_drones_fit = False
         # Небольшая пауза между действиями для стабильности
         pyautogui.PAUSE = 0.8 
-        self.window_name = "EVE - Nikky Naari" # Имя окна (может быть "EVE - Имя Персонажа")
+        self.window_name: str | None = None
+        # HWND выбранного окна EVE (Win32). Устанавливается в
+        # set_window(). Используется в _get_offset/_activate_game_window
+        # для точного доступа к конкретному окну, а не 'первому с
+        # таким title' (pygetwindow возвращает дубликаты).
+        self.window_hwnd: int | None = None
         self.no_targets_timer = None # Таймер для сбора дронов
         # Поправка на заголовок окна (если мажет по вертикали)
         self.CORRECTION_Y = 31
@@ -214,37 +339,173 @@ class EveBot:
         self.stats = stats if stats is not None else {
             'sites_cleared': 0, 'kills': 0, 'drones_lost': 0, 'escapes': 0,
         }
-    
-    def _get_offset(self):  
-        """Получаем экранные координаты окна игры"""
-        try:
-            windows = gw.getWindowsWithTitle(self.window_name)
-            if windows:
-                win = windows[0]
-                # Прибавляем коррекцию на заголовок окна к Y
-                return win.left, win.top + self.CORRECTION_Y
-            return 0, 0
-        except:
-            return 0, 0
 
-    def _activate_game_window(self):
-        """Находит окно игры и выводит его на передний план"""
+    def _find_hwnd_by_title(self, title: str) -> int | None:
+        """HWND главного окна с указанным title среди exefile.exe.
+
+        Идёт по PID exefile.exe → EnumWindows → сравнивает title.
+        Если у PID несколько окон с одинаковым title (main + render) —
+        берёт самое большое по площади (как в list_eve_windows).
+        Возвращает HWND (int) или None.
+        """
+        if _USER32 is None or _KERNEL32 is None:
+            return None
+        want = str(title)
+        best_hwnd: int | None = None
+        best_area: int = -1
+        for pid in _list_exefile_pids():
+            for hwnd in _enum_windows_for_pid(pid):
+                if _get_window_title(hwnd) != want:
+                    continue
+                left, top, right, bottom = _get_window_rect(hwnd)
+                area = max(0, right - left) * max(0, bottom - top)
+                if area > best_area:
+                    best_area = area
+                    best_hwnd = hwnd
+        return best_hwnd
+
+    def set_window(self, title: str) -> None:
+        """Установить окно EVE для работы бота.
+
+        Вызывается из GUI (main.py) после выбора пользователя.
+        Находит HWND окна через Win32 (среди процессов exefile.exe)
+        и сохраняет и title, и HWND. Если HWND не найден (окно
+        закрылось, или не-Windows) — сохраняем только title и
+        пишем предупреждение.
+        """
+        self.window_name = str(title)
+        self.window_hwnd = None
+        self.window_hwnd = self._find_hwnd_by_title(self.window_name)
+        if self.window_hwnd:
+            print(f"[Bot] Выбрано окно EVE: {self.window_name} "
+                  f"(hwnd=0x{self.window_hwnd:X})")
+        else:
+            print(f"[Bot] Выбрано окно EVE: {self.window_name} "
+                  f"(HWND не найден — работа через pygetwindow fallback)")
+
+    def list_eve_windows(self) -> list:
+        """Список окон EVE через Win32 API (по одному на процесс exefile.exe).
+
+        pygetwindow возвращает дубликаты (у каждого процесса EVE есть
+        дополнительное render-окно с тем же title). Здесь мы идём от
+        процессов exefile.exe к их окнам через EnumWindows —
+        гарантированно одно главное окно на процесс.
+
+        Возвращает тот же формат, что раньше:
+          [{'title': str, 'left': int, 'top': int,
+            'width': int, 'height': int, 'is_active': bool}, ...]
+        Отсортирован по title.
+        """
+        result: list = []
+        if _USER32 is None or _KERNEL32 is None:
+            print("[Bot] list_eve_windows: Win32 API недоступен")
+            return result
+
+        pids = _list_exefile_pids()
+        if not pids:
+            return result
+
+        for pid in pids:
+            hwnds = _enum_windows_for_pid(pid)
+            # Оставляем только окна с заголовком EVE - <Имя>
+            candidates = []
+            for hwnd in hwnds:
+                title = _get_window_title(hwnd)
+                if not _EVE_WINDOW_TITLE_RE.match(title):
+                    continue
+                name_part = title[len('EVE - '):].strip().lower()
+                if name_part in _EVE_WINDOW_TITLE_BLACKLIST:
+                    continue
+                left, top, right, bottom = _get_window_rect(hwnd)
+                width = max(0, right - left)
+                height = max(0, bottom - top)
+                candidates.append({
+                    'title': title,
+                    'left': left,
+                    'top': top,
+                    'width': width,
+                    'height': height,
+                    'is_active': bool(_USER32.GetForegroundWindow() == hwnd),
+                    '_hwnd': hwnd,     # внутреннее поле, в GUI не нужно
+                })
+            if not candidates:
+                continue
+            # Если у процесса несколько подходящих окон — берём самое
+            # большое по площади (главное, не render).
+            best = max(candidates, key=lambda w: w['width'] * w['height'])
+            # Убираем внутреннее поле _hwnd из возвращаемого словаря.
+            best.pop('_hwnd', None)
+            result.append(best)
+
+        result.sort(key=lambda x: x['title'])
+        return result
+
+    def _get_offset(self):
+        """Экранные координаты окна игры для клика (left, top+CORRECTION_Y).
+
+        Приоритет:
+          1) self.window_hwnd — через Win32 GetWindowRect (точно то окно,
+             которое выбрал пользователь);
+          2) self.window_name — через pygetwindow (fallback, менее
+             надёжно: может вернуть render-окно с тем же title);
+          3) ничего нет — (0, 0).
+        """
+        if getattr(self, 'window_hwnd', None):
+            try:
+                left, top, _right, _bottom = _get_window_rect(
+                    self.window_hwnd)
+                if left or top or _right or _bottom:
+                    return int(left), int(top) + self.CORRECTION_Y
+            except Exception as e:
+                print(f"[Bot] _get_offset: GetWindowRect failed: {e}")
+        if not self.window_name:
+            return 0, 0
         try:
-            # Ищем окна, в названии которых есть "EVE"
             windows = gw.getWindowsWithTitle(self.window_name)
-            if windows:
-                win = windows[0]
-                if not win.isActive:
-                    print(f"[Bot] Активирую окно: {win.title}")
-                    win.activate()
-                    time.sleep(0.5) # Ждем, пока окно "прогрузится" в фокусе
-                return True
-            else:
-                print("[Bot] Ошибка: Окно EVE не найдено!")
-                return False
+        except Exception:
+            return 0, 0
+        if windows:
+            win = windows[0]
+            return int(win.left), int(win.top) + self.CORRECTION_Y
+        return 0, 0
+
+    def _activate_game_window(self) -> bool:
+        """Выводит окно EVE на передний план.
+
+        Приоритет:
+          1) self.window_hwnd — SetForegroundWindow(hwnd);
+          2) self.window_name — pygetwindow.activate() (fallback);
+          3) ничего — False.
+        """
+        if getattr(self, 'window_hwnd', None):
+            try:
+                ok = bool(_USER32.SetForegroundWindow(
+                    ctypes.c_void_p(self.window_hwnd)))
+                if ok:
+                    return True
+            except Exception as e:
+                print(f"[Bot] SetForegroundWindow failed: {e}")
+        if not self.window_name:
+            print("[Bot] Окно EVE не выбрано — активация невозможна")
+            return False
+        try:
+            windows = gw.getWindowsWithTitle(self.window_name)
         except Exception as e:
             print(f"[Bot] Ошибка при активации окна: {e}")
             return False
+        if not windows:
+            print("[Bot] Ошибка: Окно EVE не найдено!")
+            return False
+        win = windows[0]
+        if not win.isActive:
+            print(f"[Bot] Активирую окно: {win.title}")
+            try:
+                win.activate()
+                time.sleep(0.5)
+            except Exception as e:
+                print(f"[Bot] Ошибка при активации окна: {e}")
+                return False
+        return True
 
 
     def _overview_row_coords(self, state, target_name=None):
@@ -720,6 +981,26 @@ class EveBot:
             cmap[name] = 'FRIGATE' if key in frig else 'NPC'
         return cmap
 
+    def _npc_distances(self, state):
+        """Список (name, distance_m, x, y) по непустым overview_entries.
+
+        Дистанция берётся из overview_entries (там уже парсится
+        parse_distance). Это ЕДИНСТВЕННЫЙ источник дистанции до цели.
+        Пропускаем записи без имени или координат.
+        """
+        out = []
+        for e in getattr(state, 'overview_entries', None) or []:
+            name = str(e.get('name') or '').strip()
+            if not name:
+                continue
+            dist = float(e.get('distance') or 0.0)
+            x = e.get('x')
+            y = e.get('y')
+            if x is None or y is None:
+                continue
+            out.append((name, dist, float(x), float(y)))
+        return out
+
     def _target_is_frigate(self, target, cmap):
         tname = str(target.get('name') or '').strip()
         if not tname:
@@ -740,6 +1021,28 @@ class EveBot:
         frigates = [c for c in (state.npc_frigate or []) if c not in skip]
         rest = [c for c in (state.npc_all or [])
                 if c not in frigates and c not in skip]
+
+        limit_m = None
+        if getattr(state, 'lock_range_km', None):
+            # 5% запас: клиент успеет принять лок до ухода за предел
+            limit_m = float(state.lock_range_km) * 1000.0 * 0.95
+
+        if limit_m:
+            # Сопоставим координаты с overview_entries по (x, y),
+            # чтобы взять дистанцию. Несопоставленные (dist == 0.0)
+            # оставляем — лучше попробовать лочить, чем пропустить NPC.
+            ov_by_xy = {}
+            for name, dist, ex, ey in self._npc_distances(state):
+                ov_by_xy[(round(ex), round(ey))] = dist
+
+            def _dist_of(coord):
+                return ov_by_xy.get((round(coord[0]), round(coord[1])), 0.0)
+
+            frigates = [c for c in frigates
+                        if _dist_of(c) == 0.0 or _dist_of(c) <= limit_m]
+            rest = [c for c in rest
+                    if _dist_of(c) == 0.0 or _dist_of(c) <= limit_m]
+
         return frigates + rest
 
     def _click_action(self, state, keyword, off_x, off_y):
@@ -908,6 +1211,22 @@ class EveBot:
             self._focus_name = None
             return
         names = [str(t.get('name') or '') for t in locked]
+        # Если фокус жив, но вышел за пределы лока — сбрасываем его,
+        # чтобы _focus_maintain ниже выбрал новую цель.
+        if self._focus_name:
+            focus_dist = None
+            for e in (getattr(state, 'overview_entries', None) or []):
+                if str(e.get('name') or '') == self._focus_name:
+                    focus_dist = float(e.get('distance') or 0.0)
+                    break
+            limit_m = None
+            if getattr(state, 'lock_range_km', None):
+                limit_m = float(state.lock_range_km) * 1000.0
+            if limit_m and focus_dist and focus_dist > limit_m:
+                print(f"[Combat] Фокус '{self._focus_name}' вышел за "
+                      f"{state.lock_range_km} км — сбрасываю")
+                self._focus_name = None
+                # Дальше код пойдёт по обычной логике выбора фокуса.
         if self._focus_name and self._focus_name in names:
             return  # фокус жив — целимся в ту же цель, ничего не делаем
         if now - self._last_lock_action_ts < self.cfg['focus_switch_cooldown']:
@@ -1007,6 +1326,34 @@ class EveBot:
             cand = self._lock_candidates(state)
             if not cand:
                 return
+
+            # Нет целей в зоне лока, но есть NPC в овервью — кружимся
+            # вокруг средней по дистанции, ждём сближения.
+            if state.npc_all and not state.is_warp:
+                limit_m = None
+                if getattr(state, 'lock_range_km', None):
+                    limit_m = float(state.lock_range_km) * 1000.0
+                # Есть ли хоть одна цель В ЗОНЕ лока? Если да — фильтр
+                # выше не сработал бы, сюда бы не попали. Значит все далеко.
+                cand_all = self._npc_distances(state)
+                # Оставляем только враждебных
+                hostile_names = {str(e.get('name') or '') for e in
+                                 (getattr(state, 'overview_entries', None) or [])
+                                 if e.get('hostile') or e.get('attacking_me')
+                                 or e.get('threat_hostile')}
+                hostile = [c for c in cand_all if c[0] in hostile_names]
+                if hostile:
+                    hostile.sort(key=lambda t: t[1])   # по дистанции
+                    mid = hostile[len(hostile) // 2]
+                    name, dist, _x, _y = mid
+                    print(f"[Combat] Целей в зоне лока нет — орбита вокруг "
+                          f"средней по дистанции '{name}' ({dist/1000:.1f} км)")
+                    off_x, off_y = self._get_offset()
+                    self._enable_orbit(state, off_x, off_y,
+                                       target_name=name, force=True)
+                    self._step_ts = now
+                    return
+
             batch_size = min(self.cfg['lock_batch_size'], len(cand))
             self._lock_queue = list(cand[:batch_size])
             lx, ly = self._lock_queue[0]

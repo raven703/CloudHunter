@@ -138,6 +138,63 @@ class ParserDebugWindow(tk.Toplevel):
         _ = was_disabled
 
 
+class WindowChoiceDialog(tk.Toplevel):
+    """Модальный попап выбора окна EVE для бота.
+
+    Показывает список окон (title + разрешение + «активно»).
+    Возвращает выбранный title через self.result (None если
+    пользователь закрыл попап).
+    """
+    def __init__(self, parent, windows: list):
+        super().__init__(parent)
+        self.result: str | None = None
+        self.title("Выбор окна EVE")
+        self.configure(bg='#1a1a1a')
+        self.geometry("480x360")
+        self.transient(parent)
+        self.grab_set()   # модальное
+
+        tk.Label(self, text="Найдено несколько окон EVE. Выберите,",
+                 bg='#1a1a1a', fg='#cccccc').pack(pady=(10, 0))
+        tk.Label(self, text="к какому подключаться:",
+                 bg='#1a1a1a', fg='#cccccc').pack(pady=(0, 8))
+
+        self.listbox = tk.Listbox(self, bg='#0a0a0a', fg='#cccccc',
+                                  selectbackground='#1b5e20',
+                                  font=("Consolas", 10), height=12)
+        for w in windows:
+            active = "  [активно]" if w.get('is_active') else ""
+            self.listbox.insert(
+                tk.END,
+                f"{w['title']}  ({w['width']}x{w['height']}){active}")
+        self.listbox.pack(fill=tk.BOTH, expand=True, padx=10, pady=6)
+        if windows:
+            self.listbox.selection_set(0)
+
+        btns = tk.Frame(self, bg='#1a1a1a')
+        btns.pack(fill=tk.X, padx=10, pady=(0, 10))
+        tk.Button(btns, text="OK", command=self._on_ok, bg='#1b5e20',
+                  fg='white', width=12).pack(side=tk.LEFT, padx=4)
+        tk.Button(btns, text="CANCEL", command=self._on_cancel,
+                  bg='#333333', fg='white', width=12).pack(side=tk.LEFT,
+                  padx=4)
+
+        self._windows = windows
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
+        self.wait_window(self)
+
+    def _on_ok(self):
+        sel = self.listbox.curselection()
+        if sel:
+            idx = int(sel[0])
+            self.result = self._windows[idx]['title']
+        self.destroy()
+
+    def _on_cancel(self):
+        self.result = None
+        self.destroy()
+
+
 class EveApp:
     def __init__(self, exe_path):
         # Перехватываем и ошибки, и обычный вывод        
@@ -382,15 +439,36 @@ class EveApp:
             self.btn_parser_debug.config(text="HIDE PARSER DEBUG")
 
     def start_bot(self):
+        # 1. Собрать список окон EVE
+        windows = self.bot.list_eve_windows()
+        if not windows:
+            self.update_log_widget(
+                "SYSTEM: окно EVE не найдено (запусти EVE)")
+            return
+        # 2. Если одно окно — выбрать автоматически
+        if len(windows) == 1:
+            chosen = windows[0]['title']
+            self.update_log_widget(
+                f"SYSTEM: найдено 1 окно EVE — выбрано: {chosen}")
+        else:
+            # 3. Если несколько — показать попап
+            dialog = WindowChoiceDialog(self.root, windows)
+            chosen = dialog.result
+            if not chosen:
+                self.update_log_widget(
+                    "SYSTEM: старт бота отменён (окно не выбрано)")
+                return
+        # 4. Передать выбор боту
+        self.bot.set_window(chosen)
+        # 5. Дальше — стандартный старт
         self.running = True
-        self.bot._stop_requested = False   # сброс запроса STOP (кнопка/hotkey)
-        # Сброс боевого пайплайна: settle-пауза варпа/андока и фокус с чистого листа
+        self.bot._stop_requested = False
         self.bot._just_exited_warp = False
         self.bot._combat_start_ts = 0.0
         self.bot._focus_name = None
         self.btn_start.config(state="disabled")
         self.btn_stop.config(state="normal")
-        self.update_log_widget("SYSTEM: BOT STARTED")
+        self.update_log_widget(f"SYSTEM: BOT STARTED ({chosen})")
 
     def stop_bot(self):
         self.running = False

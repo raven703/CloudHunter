@@ -65,6 +65,37 @@ def _is_distance_label(text: str) -> bool:
     return bool(_DISTANCE_LABEL_RE.match(text.strip()))
 
 
+_OVERVIEW_NAME_RE = re.compile(
+    r'^[A-ZА-Я][A-Za-zА-Яа-яЁё0-9\s\'\-\.]{1,48}$'
+)
+
+
+def _is_overview_name(text: str) -> bool:
+    """Похоже ли значение на имя NPC в овервью.
+
+    Настоящее имя — начинается с заглавной буквы, содержит хотя бы
+    одну латинскую букву (NPC в EVE на латинице: 'Centii Butcher'),
+    не является чистым числом ('324'), не содержит запятой
+    ('0,19' — это угол/скорость), не длиннее 48 символов.
+
+    Отсекает мусор: '324', '0,19', '-4,2', '160 km' (но 'km'
+    ловится _is_distance_label ДО этой проверки).
+    """
+    t = (text or '').strip()
+    if not t or len(t) > 48:
+        return False
+    # не число и не '0,19'-подобное
+    if re.fullmatch(r'[-+]?\d+([.,]\d+)?', t):
+        return False
+    # не должно быть запятых (в именах NPC их нет)
+    if ',' in t:
+        return False
+    # должно быть хотя бы одно латинское слово (NPC на латинице)
+    if not re.search(r'[A-Za-z]{2,}', t):
+        return False
+    return True
+
+
 def parse_percent(text: str) -> float:
     """Парсинг процентов"""
     text = clean_html(text).replace(',', '.')
@@ -1101,7 +1132,7 @@ def parse_selected_item(root: Dict) -> Optional[Dict]:
             continue
         if label_name == 'distanceLabel' or _is_distance_label(text):
             result['distance'] = parse_distance(text)
-        elif label_name == 'nameLabel' or not result['name']:
+        elif text and _is_overview_name(text):
             result['name'] = text
 
     # 2. Иконка объекта (topCont -> iconCont -> Icon 'iconSprite')
@@ -1222,9 +1253,9 @@ def parse_overview_entry(entry_node: Dict, ox: float = 0.0, oy: float = 0.0) -> 
             ei = child.get('dictEntriesOfInterest', {})
             text = clean_html(str(ei.get('_text', '')))
             
-            if 'km' in text or 'm' in text:
+            if _is_distance_label(text):
                 result['distance'] = parse_distance(text)
-            elif text:
+            elif text and _is_overview_name(text):
                 result['name'] = text
         
         if child.get('pythonObjectTypeName') == 'SpaceObjectIcon':
@@ -2023,6 +2054,7 @@ def build_debug_blocks(state: ParsedUIState) -> List[Tuple[str, str]]:
     add(_pct_tag(state.structure_pct), f"  structure {_bar(state.structure_pct)} {_fmt_pct(state.structure_pct)}%")
     add(_pct_tag(state.capacitor_pct), f"  capacitor {_bar(state.capacitor_pct)} {_fmt_pct(state.capacitor_pct)}%")
     add('info', f"  speed     {state.speed:8.1f} m/s")
+    add('info', f"  lock_range_km: {state.lock_range_km or '?'}")
     mov = _movement_state(state)
     mov_tag = 'good' if mov in ('ORBITING', 'STATIONARY', 'MOVING') else ('warn' if mov == 'ALIGNING' else 'danger')
     add(mov_tag, f"  state     {mov}")
@@ -2266,6 +2298,39 @@ def _finalize_state(state: ParsedUIState) -> None:
         state.combat_mode_active = "IDLE"
 
 
+_LOCK_RANGE_RE = re.compile(r'within\s+(?:<[^>]+>)*\s*(\d+)\s*(?:<[^>]+>)*\s*km', re.IGNORECASE)
+
+
+def parse_quick_message(root: Dict) -> Optional[float]:
+    """Максимальная дистанция захвата цели из QuickMessage клиента.
+
+    EVE показывает всплывающее сообщение когда цель вне зоны лока:
+      "The target <b>X</b> is too far away. It must be within
+       <b>75 km</b>."
+    Из него извлекается лимит лока (в км). Если сообщения нет —
+    None (значит клиент ещё не показывал лимит в этой сессии).
+
+    Ищет узел QuickMessage в l_abovemain рекурсивно по дереву.
+    """
+    qm = find_first_by_type(root, 'QuickMessage')
+    if not qm:
+        return None
+    for node in iter_nodes(qm):
+        ei = node.get('dictEntriesOfInterest') or {}
+        if node.get('pythonObjectTypeName') != 'TextBody':
+            continue
+        txt = str(ei.get('_setText', '') or ei.get('_text', '') or '')
+        if not txt:
+            continue
+        m = _LOCK_RANGE_RE.search(txt)
+        if m:
+            try:
+                return float(m.group(1))
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
 # ==================== ГЛАВНЫЙ ПАРСЕР ====================
 
 def parse_ui_root(json_data: Dict) -> ParsedUIState:
@@ -2368,6 +2433,9 @@ def parse_ui_root(json_data: Dict) -> ParsedUIState:
     docked_ui = (find_first_by_type(root, 'UndockButton') is not None
                  or find_first_by_type(root, 'HangarLayer') is not None)
     state.is_loading = not (in_space_ui or docked_ui)
+
+    # ====== ЛОКАЛЬНЫЙ ЧАТ: ЛИМИТ ДИСТАНЦИИ ЛОКА (QuickMessage) ======
+    state.lock_range_km = parse_quick_message(root)
     
     # ====== СТАТУС КОРАБЛЯ (warp / aligning / orbit / docked) ======
     # Реальная структура индикации:
