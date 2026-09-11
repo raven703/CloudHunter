@@ -8,7 +8,7 @@ import time
 from queue import Queue, Empty
 
 from new_parser import EveParserNew         # ЕДИНСТВЕННЫЙ парсер UI
-from state_json import (build_state_payload, save_state_payload)   # JSON-выгрузка для бота и нейросети
+from state_json import build_state_payload   # JSON-выгрузка для бота и нейросети
 
 
 class EveClient:
@@ -26,8 +26,6 @@ class EveClient:
         # Callback для передачи ПОЛНОГО состояния парсера в GUI (окно отладки)
         self.state_callback = state_callback
 
-        # Флаг: JSON-выгрузка state_payload.json ещё ни разу не записывалась
-        self._payload_saved_once = False
         # Последний собранный JSON payload (для внешних потребителей)
         self.last_payload = None
         # Последний СЫРОЙ JSON-дамп UI (для кнопки "Выгрузить сырой JSON")
@@ -35,6 +33,7 @@ class EveClient:
         # Расширенное логирование (чекбокс VERBOSE LOG в GUI)
         self.verbose = False
         self._last_vlog_ts = 0.0
+        self.broadcaster = None   # устанавливается из main.py, может быть None
 
     def _log_reader(self, pipe):
         for line in pipe:
@@ -115,10 +114,8 @@ class EveClient:
             try:
                 payload = build_state_payload(state, draw_list)
                 self.last_payload = payload
-                saved = save_state_payload(state, draw_list)
-                if saved and not self._payload_saved_once:
-                    self._payload_saved_once = True
-                    print(f"[Client] JSON payload for bot/NN -> {saved}")
+                if self.broadcaster is not None:
+                    self.broadcaster.broadcast(payload)
             except Exception as e:
                 print(f"[Client] payload error: {e}")
 

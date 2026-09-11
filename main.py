@@ -12,6 +12,7 @@ import os
 from client import EveClient
 from bot import EveBot
 from new_parser import STANDING_COLORS, build_debug_blocks
+from state_server import StateBroadcaster, ActionReceiver
 
 class WidgetLogger:
     def __init__(self, callback):
@@ -151,7 +152,12 @@ class EveApp:
         screen_w = self.root.winfo_screenwidth()
         self.root.geometry(f"{win_w}x{win_h}+{screen_w - win_w}+{10}")
         self.root.configure(bg='#1a1a1a')
-        
+
+        # --- NN CONTROL: атрибуты до build_ui (чекбокс их читает) ---
+        self.nn_control_var = tk.BooleanVar(value=False)
+        self._nn_last_action_ts = 0.0
+        self._nn_warn_ts = 0.0
+
         self.build_ui()
         self.parser_debug_window = ParserDebugWindow(self.root)
 
@@ -169,6 +175,20 @@ class EveApp:
         # (new_parser.py); main.py использует готовый (state, draw_list, payload) из очереди.
         self.bot = EveBot(stats=self.stats)
 
+        # --- NN CONTROL: TCP-серверы состояния и команд (state_server.py) ---
+        try:
+            self.broadcaster = StateBroadcaster()
+            self.client.broadcaster = self.broadcaster
+        except Exception as e:
+            self.broadcaster = None
+            print(f"[App] StateBroadcaster failed: {e}")
+
+        try:
+            self.action_receiver = ActionReceiver()
+        except Exception as e:
+            self.action_receiver = None
+            print(f"[App] ActionReceiver failed: {e}")
+
         self.running = False
         # Тик бота выполняется в отдельном потоке: GUI (кнопка STOP) не
         # блокируется на время действий pyautogui (клики, паузы).
@@ -184,11 +204,8 @@ class EveApp:
 
     def update_log_widget(self, text):
         if self.log_view.winfo_exists():
-            # Разрешаем редактирование, чтобы вставить текст, затем запрещаем
-            self.log_view.config(state="normal")
             self.log_view.insert(tk.END, f"[{time.strftime('%H:%M:%S')}] {text}\n")
             self.log_view.see(tk.END)
-            self.log_view.config(state="disabled")
 
     def build_ui(self):
         # ---- Баннер состояния бота (красный/жёлтый/зелёный/синий) ----
@@ -235,6 +252,13 @@ class EveApp:
                                        command=self.dump_raw_snapshot, height=1, font=("Arial", 9, "bold"))
         self.btn_dump_json.pack(fill=tk.X, pady=2)
 
+        log_btns = tk.Frame(btn_frame, bg='#1a1a1a')
+        log_btns.pack(fill=tk.X, pady=2)
+        tk.Button(log_btns, text="CLEAR LOG", bg='#333333', fg='#aaaaaa',
+                  command=self.clear_log, height=1, font=("Arial", 8)).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 2))
+        tk.Button(log_btns, text="COPY LOG", bg='#333333', fg='#aaaaaa',
+                  command=self.copy_log, height=1, font=("Arial", 8)).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(2, 0))
+
         opts_frame = tk.Frame(self.root, bg='#1a1a1a', padx=10, pady=4)
         opts_frame.pack(fill=tk.X)
 
@@ -250,15 +274,23 @@ class EveApp:
         tk.Checkbutton(opts_frame, text="Verbose Log", variable=self.verbose_var, command=self.toggle_verbose,
                        bg='#1a1a1a', fg='#cccccc', selectcolor='black',
                        activebackground='#1a1a1a', activeforeground='#ffffff').pack(anchor="w")
+        tk.Checkbutton(opts_frame, text="NN CONTROL (accept commands from :5556)",
+                       variable=self.nn_control_var,
+                       command=self.on_nn_control_change,
+                       bg='#1a1a1a', fg='#ffaa00', selectcolor='black',
+                       activebackground='#1a1a1a', activeforeground='#ffaa00').pack(anchor="w")
 
         tk.Label(self.root, text="WORLD STATUS", bg='#1a1a1a', fg='#888888', font=("Arial", 8, "bold")).pack(anchor="w", padx=10)
         # state="disabled" позволяет копировать, но запрещает ввод
-        self.status_view = tk.Text(self.root, height=18, bg='black', fg='#00ccff', font=("Consolas", 10), padx=10, pady=10, relief="flat", state="disabled")
+        self.status_view = tk.Text(self.root, height=18, bg='black', fg='#00ccff', font=("Consolas", 10), padx=10, pady=10, relief="flat", state="normal")
         self.status_view.pack(fill=tk.X, padx=10, pady=5)
+        # Только для чтения: блокируем ввод, но оставляем выделение/копирование
+        self.status_view.bind("<Key>", lambda e: "break")
 
         tk.Label(self.root, text="CONSOLE LOG", bg='#1a1a1a', fg='#888888', font=("Arial", 8, "bold")).pack(anchor="w", padx=10)
-        self.log_view = tk.Text(self.root, bg='black', fg='#777777', font=("Consolas", 9), padx=10, pady=5, relief="flat", state="disabled")
+        self.log_view = tk.Text(self.root, bg='black', fg='#777777', font=("Consolas", 9), padx=10, pady=5, relief="flat", state="normal")
         self.log_view.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        self.log_view.bind("<Key>", lambda e: "break")
         
         tk.Button(self.root, text="EXIT", command=self.on_exit, bg='#333333', fg='white', relief="flat").pack(fill=tk.X, padx=10, pady=10)
 
@@ -272,6 +304,22 @@ class EveApp:
         self.client.verbose = on
         self.bot.verbose = on
         self.update_log_widget(f"Verbose log: {'ON' if on else 'OFF'}")
+
+    def on_nn_control_change(self):
+        on = self.nn_control_var.get()
+        self.update_log_widget(f"NN CONTROL: {'ON' if on else 'OFF'}")
+
+    def clear_log(self):
+        self.log_view.delete("1.0", tk.END)
+
+    def copy_log(self):
+        try:
+            text = self.log_view.get("1.0", tk.END)
+            self.root.clipboard_clear()
+            self.root.clipboard_append(text)
+            self.update_log_widget("LOG: скопирован в буфер обмена")
+        except Exception as e:
+            print(f"[App] copy_log error: {e}")
 
     def dump_raw_snapshot(self):
         """Кнопка 'ВЫГРУЗИТЬ СЫРОЙ JSON': сохраняет последний дамп eveui.exe в файл."""
@@ -370,6 +418,8 @@ class EveApp:
             self.running = False
             
             # Сначала убиваем процесс через клиент
+            if getattr(self, 'broadcaster', None): self.broadcaster.stop()
+            if getattr(self, 'action_receiver', None): self.action_receiver.stop()
             if hasattr(self, 'client'):
                 self.client.stop()
                 
@@ -487,16 +537,28 @@ class EveApp:
                     self.update_log_widget("SYSTEM: HOTKEY Ctrl+Shift+S -> STOP")
                     self.stop_bot()
 
-            # Обновление текста состояния (с возможностью выделения)
-            self.status_view.config(state="normal")
+            # Обновление текста состояния (всегда редактируемый, ввод блокируется по <Key>)
             self.status_view.delete("1.0", tk.END)
             self.status_view.insert("1.0", self.generate_report(state))
-            self.status_view.config(state="disabled")
+            self.status_view.config(fg="#ff5555" if (state.local_has_hostile or state.local_has_neutral) else "#00ccff")
 
-            if state.local_has_hostile or state.local_has_neutral:
-                self.status_view.config(fg="#ff5555")
-            else:
-                self.status_view.config(fg="#00ccff")
+            # --- NN CONTROL: обработка команд от нейросети (:5556) ---
+            if self.running and self.nn_control_var.get() and self.action_receiver is not None:
+                nn_action = self.action_receiver.get_latest()
+                if nn_action:
+                    self._nn_last_action_ts = time.time()
+                    self.update_log_widget(f"[NN] action={nn_action.get('action')} "
+                                           f"reason={nn_action.get('reason', '')}")
+                    try:
+                        self.bot.apply_action(nn_action)
+                    except Exception as e:
+                        print(f"[App] apply_action error: {e}")
+
+                seen = self.action_receiver.last_seen_ts()
+                if seen > 0 and time.time() - seen > 5.0:
+                    if time.time() - self._nn_warn_ts > 5.0:
+                        self._nn_warn_ts = time.time()
+                        self.update_log_widget("[NN] нет команд >5 сек (FSM работает)")
 
             if self.running:
                 # Тик бота — в отдельном потоке: GUI и кнопка STOP реагируют

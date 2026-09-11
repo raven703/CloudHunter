@@ -1587,3 +1587,35 @@ class EveBot:
     def emergency_exit(self, reason):
         self.stats['escapes'] += 1
         print(f"[!!!] EMERGENCY: {reason} (побегов за сессию: {self.stats['escapes']})")
+
+    def apply_action(self, action: dict) -> bool:
+        """Применить решение нейросети (или заглушки nn_server).
+
+        Возвращает True, если действие распознано и выполнено (или поставлено
+        в очередь исполнения). Сейчас реализованы только EMERGENCY_EXIT и IDLE:
+        минимальный набор, чтобы канал NN -> bot был проверен.
+        Остальные действия логируем и игнорируем — их реализуем позже,
+        когда появится нейросеть.
+
+        Ожидаемые action:
+          EMERGENCY_EXIT    — выйти в безопасность (уже реализовано)
+          IDLE              — ничего не делать, FSM сама работает
+          ENGAGE_TARGETS    — (позже) атаковать цели из params.lock_candidates
+          RECALL_DRONES     — (позже) собрать дронов
+          ACTIVATE_REPAIRER — (позже) включить указанный слот репки
+        """
+        if not isinstance(action, dict):
+            return False
+        a = str(action.get('action') or 'IDLE')
+
+        if a == 'EMERGENCY_EXIT':
+            reason = action.get('reason') or 'NN decision'
+            self.emergency_exit(reason)
+            return True
+
+        if a == 'IDLE':
+            return True
+
+        # Остальные команды пока не реализованы — лог для отладки канала.
+        print(f"[Bot][NN] action={a} params={action.get('params')} — not implemented yet")
+        return False
