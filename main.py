@@ -214,6 +214,8 @@ class EveApp:
         self.nn_control_var = tk.BooleanVar(value=False)
         self._nn_last_action_ts = 0.0
         self._nn_warn_ts = 0.0
+        self._last_logic_err_text = ''
+        self._last_logic_err_ts = 0.0
 
         self.build_ui()
         self.parser_debug_window = ParserDebugWindow(self.root)
@@ -227,26 +229,16 @@ class EveApp:
         }
         self.last_state = None
 
-        self.client = EveClient(exe_path, state_callback=self.on_new_state)
-        # Парсинг выполняется в client.py (_parse_loop) единым парсером EveParserNew
-        # (new_parser.py); main.py использует готовый (state, draw_list, payload) из очереди.
+        self.exe_path = exe_path
+        self.client = None          # создаётся после выбора окна
         self.bot = EveBot(stats=self.stats)
 
         # --- NN CONTROL: TCP-серверы состояния и команд (state_server.py) ---
-        try:
-            self.broadcaster = StateBroadcaster()
-            self.client.broadcaster = self.broadcaster
-        except Exception as e:
-            self.broadcaster = None
-            print(f"[App] StateBroadcaster failed: {e}")
-
-        try:
-            self.action_receiver = ActionReceiver()
-        except Exception as e:
-            self.action_receiver = None
-            print(f"[App] ActionReceiver failed: {e}")
+        self.broadcaster = None     # создаётся вместе с client
+        self.action_receiver = None
 
         self.running = False
+        self._parser_ready = False
         # Тик бота выполняется в отдельном потоке: GUI (кнопка STOP) не
         # блокируется на время действий pyautogui (клики, паузы).
         self._bot_thread = None
@@ -254,6 +246,9 @@ class EveApp:
         self._hotkey_stop_requested = False
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_exit)
+
+        self.btn_start.config(state="disabled")
+        self.root.after(100, self._choose_window_and_start_parser)
 
     def log_safe(self, text):
         if self.root.winfo_exists():
@@ -419,6 +414,13 @@ class EveApp:
 
     def _apply_new_state(self, state):
         self.last_state = state
+        if not self._parser_ready:
+            self._parser_ready = True
+            self.update_log_widget("SYSTEM: парсер EVE видит структуру — можно стартовать")
+            try:
+                self.btn_start.config(state="normal")
+            except tk.TclError:
+                pass
         if not self.parser_debug_window or not self.parser_debug_window.winfo_exists():
             return
         self.parser_debug_window.set_state(state)
@@ -438,29 +440,65 @@ class EveApp:
                 self.parser_debug_window.render()
             self.btn_parser_debug.config(text="HIDE PARSER DEBUG")
 
-    def start_bot(self):
-        # 1. Собрать список окон EVE
+    def _choose_window_and_start_parser(self):
+        """Попап выбора окна при старте main.py + запуск eveui.exe.
+
+        Вызывается из __init__ через root.after (чтобы окно tk уже
+        существовало). Если окон 0 — предупреждение, ждём запуска EVE
+        (пользователь перезапустит main.py). Если 1 — автовыбор.
+        Если 2+ — WindowChoiceDialog.
+        """
         windows = self.bot.list_eve_windows()
         if not windows:
             self.update_log_widget(
-                "SYSTEM: окно EVE не найдено (запусти EVE)")
+                "SYSTEM: окна EVE не найдены — запусти EVE и перезапусти main.py")
             return
-        # 2. Если одно окно — выбрать автоматически
         if len(windows) == 1:
-            chosen = windows[0]['title']
+            chosen = windows[0]
             self.update_log_widget(
-                f"SYSTEM: найдено 1 окно EVE — выбрано: {chosen}")
+                f"SYSTEM: найдено 1 окно EVE — выбрано: {chosen['title']}")
         else:
-            # 3. Если несколько — показать попап
             dialog = WindowChoiceDialog(self.root, windows)
-            chosen = dialog.result
+            if not dialog.result:
+                self.update_log_widget(
+                    "SYSTEM: выбор окна отменён — закрой main.py")
+                return
+            chosen = next(
+                (w for w in windows if w['title'] == dialog.result), None)
             if not chosen:
                 self.update_log_widget(
-                    "SYSTEM: старт бота отменён (окно не выбрано)")
+                    "SYSTEM: выбранное окно не найдено в списке")
                 return
-        # 4. Передать выбор боту
-        self.bot.set_window(chosen)
-        # 5. Дальше — стандартный старт
+
+        # Запомнить окно в боте (для кликов)
+        self.bot.set_window(chosen['title'])
+        pid = int(chosen.get('pid') or 0)
+        self.update_log_widget(
+            f"SYSTEM: выбрано окно {chosen['title']} (PID={pid})")
+
+        # Запустить парсер на выбранном PID
+        self.client = EveClient(self.exe_path, pid=pid,
+                                state_callback=self.on_new_state)
+        try:
+            self.broadcaster = StateBroadcaster()
+            self.client.broadcaster = self.broadcaster
+        except Exception as e:
+            self.broadcaster = None
+            print(f"[App] StateBroadcaster failed: {e}")
+
+        try:
+            self.action_receiver = ActionReceiver()
+        except Exception as e:
+            self.action_receiver = None
+            print(f"[App] ActionReceiver failed: {e}")
+
+        threading.Thread(target=self.client.reader_loop, daemon=True).start()
+        self.update_log_widget("SYSTEM: запущен парсер eveui.exe — ждём данные")
+
+    def start_bot(self):
+        if not self.client or not self.last_state:
+            self.update_log_widget("SYSTEM: парсер ещё не готов")
+            return
         self.running = True
         self.bot._stop_requested = False
         self.bot._just_exited_warp = False
@@ -468,7 +506,7 @@ class EveApp:
         self.bot._focus_name = None
         self.btn_start.config(state="disabled")
         self.btn_stop.config(state="normal")
-        self.update_log_widget(f"SYSTEM: BOT STARTED ({chosen})")
+        self.update_log_widget(f"SYSTEM: BOT STARTED ({self.bot.window_name})")
 
     def stop_bot(self):
         self.running = False
@@ -486,7 +524,7 @@ class EveApp:
             # Сначала убиваем процесс через клиент
             if getattr(self, 'broadcaster', None): self.broadcaster.stop()
             if getattr(self, 'action_receiver', None): self.action_receiver.stop()
-            if hasattr(self, 'client'):
+            if getattr(self, 'client', None):
                 self.client.stop()
                 
             # Возвращаем stderr на место
@@ -589,6 +627,9 @@ class EveApp:
 
     def logic_loop(self):
         if not self.root.winfo_exists(): return
+        if self.client is None:
+            self.root.after(30, self.logic_loop)
+            return
         try:
             state, _draw_list, payload = self.client.queue.get_nowait()
             # (state, _draw_list, payload) уже готовы — их положил client._parse_loop.
@@ -638,7 +679,11 @@ class EveApp:
         except Empty: pass
         except Exception as e:
             if "invalid command" not in str(e) and self.root.winfo_exists():
-                print(f"Logic Error: {e}")
+                now = time.time()
+                if str(e) != self._last_logic_err_text or now - self._last_logic_err_ts >= 5.0:
+                    self._last_logic_err_text = str(e)
+                    self._last_logic_err_ts = now
+                    print(f"Logic Error: {e}")
 
         self.root.after(30, self.logic_loop)
 
@@ -687,8 +732,7 @@ class EveApp:
             time.sleep(0.05)
 
     def run(self):
-        threading.Thread(target=self.client.reader_loop, daemon=True).start()
-        # Поток глобального хоткея STOP (Ctrl+Shift+S)
+        # reader_loop запущен в _choose_window_and_start_parser
         threading.Thread(target=self._hotkey_loop, daemon=True).start()
         self.logic_loop()
         self.root.mainloop()

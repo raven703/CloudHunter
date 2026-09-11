@@ -427,6 +427,7 @@ class EveBot:
                     'height': height,
                     'is_active': bool(_USER32.GetForegroundWindow() == hwnd),
                     '_hwnd': hwnd,     # внутреннее поле, в GUI не нужно
+                    'pid': pid,
                 })
             if not candidates:
                 continue

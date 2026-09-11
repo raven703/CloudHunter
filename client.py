@@ -12,8 +12,9 @@ from state_json import build_state_payload   # JSON-выгрузка для бо
 
 
 class EveClient:
-    def __init__(self, exe_path, state_callback=None):
+    def __init__(self, exe_path, pid=None, state_callback=None):
         self.exe_path = exe_path
+        self.pid = pid          # PID процесса EVE (или None)
         # Очередь для бота: сюда кладётся (state, draw_list, payload) нового парсера
         self.queue = Queue(maxsize=2)
         # Внутренняя очередь сырых JSON между читающим потоком и потоком парсинга
@@ -48,9 +49,12 @@ class EveClient:
         q.put(item)
 
     def reader_loop(self):
-        print(f"[Client] Запуск процесса: {self.exe_path}")
+        cmd = [self.exe_path, "-remove-other-dict-entries"]
+        if self.pid:
+            cmd += ["-pid", str(self.pid)]
+        print(f"[Client] Запуск процесса: {' '.join(cmd)}")
         process = subprocess.Popen(
-            [self.exe_path, "-remove-other-dict-entries"],
+            cmd,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, encoding='utf-8', errors='replace', bufsize=10**7
         )
