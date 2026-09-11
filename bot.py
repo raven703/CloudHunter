@@ -64,7 +64,9 @@ def _win_key_up(key):
 class EveBot:
     def __init__(self, stats=None):
         self.current_state = None
-        self.use_drones = True
+        # Одноразовые предупреждения об отсутствии оружия/дронов в фите
+        self._warned_no_weapons = False
+        self._warned_no_drones_fit = False
         # Небольшая пауза между действиями для стабильности
         pyautogui.PAUSE = 0.8 
         self.window_name = "EVE - Nikky Naari" # Имя окна (может быть "EVE - Имя Персонажа")
@@ -88,6 +90,7 @@ class EveBot:
             # --- дроны ---
             'drone_hp_recall': 0.5,        # доля HP дрона для отзыва (0..1; HP может не парситься)
             'drone_relaunch_delay': 3.0,   # пауза перед перезапуском собранных дронов, сек
+            'drone_release_wait': 15.0,    # макс. ожидание attackingMe >=80% перед выпуском дронов, сек
             'min_drones': 1,               # тревога, если живых дронов меньше
             'drone_hp_check_interval': 2.0,# как часто проверять HP дронов (сек)
             # --- захват целей ---
@@ -119,9 +122,10 @@ class EveBot:
             'probe_open_timeout': 5.0,         # не жать Alt+P чаще, пока окно открывается (сек)
         }
 
-        # --- Микро-FSM дронов: FIGHTING | RECALLING | COOLDOWN ---
+        # --- Микро-FSM дронов: FIGHTING | RECALLING | WAITING_ATTACK | COOLDOWN ---
         self._drone_phase = 'FIGHTING'
         self._drone_cooldown_until = 0.0
+        self._drone_wait_start_ts = 0.0
 
         # --- FSM цели в бою: IDLE|SELECT|ORBIT|LOCK|ATTACK ---
         # Цикл: выбор цели из овервью -> орбита -> захват в лок -> атака.
@@ -303,7 +307,6 @@ class EveBot:
         if self._stop_requested:
             return
         self.current_state = state
-        self.use_drones = use_drones
 
         # Расширенный лог: сводка состояния и фаз (не чаще раза в 2 сек)
         if self.verbose:
@@ -407,6 +410,19 @@ class EveBot:
         if state.is_loading:
             state.combat_mode_active = "LOADING"
             return
+
+        # ================================================================
+        # ШАГ 1b: ОРУЖИЕ/ДРОНЫ — бот сам определяет, чем атаковать
+        # ================================================================
+        # use_drones больше не приходит из GUI — считаем по фиту корабля.
+        has_guns = bool(getattr(state, 'high_slots', None))
+        has_drones = (state.drones_in_bay + state.drones_in_space) > 0
+        self.use_drones = has_drones
+        self.use_guns = has_guns
+        if not has_guns and not has_drones and not self._warned_no_weapons:
+            self._warned_no_weapons = True
+            print("[Bot][WARNING] В фите нет ни пушек, ни дронов — бот не сможет атаковать")
+            return  # ничего не делаем дальше (кроме безопасности выше)
 
         # ================================================================
         # ШАГ 2: ОТКРЫТЬ PROBE SCANNER (Alt+P, если закрыт)
@@ -914,8 +930,7 @@ class EveBot:
                            target_name=self._focus_name or None, force=True)
         # Дроны атакуют новую цель фокуса
         if self.use_drones and state.drones_in_space > 0:
-            print(f"[Bot] Дроны -> новая цель фокуса ({self._focus_name or 'Target'})")
-            pyautogui.press('f')
+            self._engage_drones_on_target(state, off_x, off_y)
 
     def _target_fsm(self, state, off_x, off_y, now):
         """Боевой цикл против NPC: пайплайн прилёта в аномалию.
@@ -1052,12 +1067,15 @@ class EveBot:
                 self._lock_batch_ts = now
             else:
                 if state.drones_in_bay > 0 and state.drones_in_space == 0:
-                    print("[Bot] Выпускаю дронов (Shift+F) — атакуют цель фокуса")
-                    self._press_shift('f')
-                    time.sleep(5)
+                    # Перед Shift+F делаем активной цель фокуса. Если цель ещё не
+                    # активна — клик по строке лока, ждём след. тик (дамп обновится),
+                    # и только потом Shift+F — иначе дроны уйдут на auto-aggro.
+                    if self._ensure_active_target(state, off_x, off_y):
+                        print("[Bot] Выпускаю дронов (Shift+F) — на цель фокуса")
+                        self._press_shift('f')
+                        time.sleep(5)
                 elif state.drones_in_space > 0 and not state.drones_fighting:
-                    print(f"[Bot] Дроны в атаку на {self._focus_name or 'цель фокуса'}! (F)")
-                    pyautogui.press('f')
+                    self._engage_drones_on_target(state, off_x, off_y)
                     time.sleep(1)
                 launched = state.drones_in_space > 0 and state.drones_fighting
                 if launched or now - self._step_ts >= self.cfg['drone_launch_wait']:
@@ -1122,6 +1140,51 @@ class EveBot:
         dist = target.get('distance') or 0.0
         print(f"[Bot] Фокус огня -> {target.get('name') or 'Target'} ({dist:.0f} m)")
         self._click_at(tx, ty)
+
+    def _ensure_active_target(self, state, off_x, off_y):
+        """Сделать активной целью фокус. True = уже активна (или фокуса нет);
+        False = кликнули по строке лока (цель станет активной на след. тике)."""
+        if not self._focus_name:
+            return True
+        focus = None
+        for t in (state.targets or []):
+            if str(t.get('name') or '') == self._focus_name:
+                focus = t
+                break
+        if focus is None:
+            return True   # фокуса нет среди локов — нечего переключать
+        active = getattr(state, 'active_target', None)
+        if str((active or {}).get('name') or '') == self._focus_name:
+            return True   # уже активна
+        print(f"[Combat] Делаю активной цель фокуса '{self._focus_name}' "
+              f"(клик по строке лока)")
+        self._click_target_row(focus, off_x, off_y)
+        return False
+
+    def _engage_drones_on_target(self, state, off_x, off_y):
+        """Послать дронов на цель фокуса. Жмёт F (VK-код) только если активная
+        цель в UI = фокус; иначе сначала кликает по строке фокуса и вернётся.
+        True = F отправлен, False = нужен ещё тик на переключение цели."""
+        if not self._focus_name:
+            return False
+        focus = None
+        for t in (state.targets or []):
+            if str(t.get('name') or '') == self._focus_name:
+                focus = t
+                break
+        if focus is None:
+            self._vlog_throttled('d_nofocus',
+                f"drones: цель фокуса '{self._focus_name}' не в локах — F не жму")
+            return False
+        active = getattr(state, 'active_target', None)
+        if str((active or {}).get('name') or '') != self._focus_name:
+            print(f"[Combat] Делаю активной цель фокуса '{self._focus_name}' "
+                  f"(клик по строке лока)")
+            self._click_target_row(focus, off_x, off_y)
+            return False
+        print(f"[Bot] Дроны -> цель фокуса '{self._focus_name}' (F)")
+        self._key_down_up('f')
+        return True
 
     def _click_at(self, x, y):
         """Клик по абсолютным координатам окна с рандомизацией (анти-детерминизм)."""
@@ -1191,65 +1254,91 @@ class EveBot:
         return hit_detected
 
     def _drone_combat_cycle(self, state, now):
-        """Микро-FSM: FIGHTING -> RECALLING -> COOLDOWN -> FIGHTING.
+        """Микро-FSM: FIGHTING -> RECALLING -> WAITING_ATTACK -> COOLDOWN -> FIGHTING.
 
         Контроль состояния дронов:
-        1. Если дронов бьют (state.drones_under_attack или HP снижается) ->
-           собираем (Shift+R). Пушки продолжают стрелять.
-        2. Когда все дроны в ангаре (status in bay) -> пауза ->
+        1. Если HP дронов ниже 50% (полоса урона > половины) -> собираем
+           (Shift+R). Пушки продолжают стрелять.
+        2. После сбора ждём, пока >=80% враждебных NPC в овервью не начнут
+           атаковать КОРАБЛЬ (attacking_me) — но не дольше drone_release_wait.
+        3. Когда все дроны в ангаре (status in bay) -> пауза ->
            перезапуск (Shift+F) -> атака (F).
-        3. Если дронов нет в ангаре и в космосе — алерт (дроны потеряны).
+        4. Если дронов нет в ангаре и в космосе — алерт (дроны потеряны).
         """
-        # Обновляем снимок HP и проверяем, бьют ли дронов
-        hp_declining = self._drones_taking_damage(state, now)
-
         if self._drone_phase == 'FIGHTING':
-            # 1. Дронов бьют — срочно собираем
-            drones_attacked = (state.drones_under_attack or hp_declining) and state.drones_in_space > 0
-            if drones_attacked:
-                reason = "state.drones_under_attack" if state.drones_under_attack else "HP снижается"
-                print(f"[Bot][Drones] Дроны под огнём ({reason})! Собираю (Shift+R)")
+            # 1. Низкий HP дронов (<50%) по полосам HP.
+            #    droneGaugeBar — это ОСТАТОК HP (сжимается при уроне);
+            #    droneGaugeBarDmg — снятый урон (растёт).
+            #    Полная полоса = остаток + снятый урон; доля урона = dmg / (bar + dmg).
+            #    Собираем дронов только когда урон превысил половину полной полосы.
+            low_hp = []
+            for d in state.drone_entries or []:
+                bar_w = d.get('bar_width') or 0
+                dmg_w = d.get('damage_width') or 0
+                full_w = bar_w + dmg_w          # остаток + снятый урон = полная полоса
+                if full_w > 0 and (dmg_w / full_w) > 0.5:
+                    low_hp.append(d)
+            if low_hp and state.drones_in_space > 0:
+                names = ', '.join(str(d.get('name') or '?') for d in low_hp)
+                print(f"[Bot][Drones] Низкий HP (<50%): {names} — собираю (Shift+R)")
                 self._press_shift('r')
                 self._drone_phase = 'RECALLING'
                 return
-            # 2. Низкий HP дрона (hp парсится не всегда: дефолт 100 -> не срабатывает)
-            hp_threshold = self.cfg['drone_hp_recall'] * 100.0
-            low = [d for d in (state.drone_entries or [])
-                   if isinstance(d.get('hp'), (int, float)) and 0 < d['hp'] < hp_threshold]
-            if low and state.drones_in_space > 0:
-                names = ', '.join(str(d.get('name') or '?') for d in low)
-                print(f"[Bot][Drones] Низкий HP: {names} — собираю (Shift+R)")
-                self._press_shift('r')
-                self._drone_phase = 'RECALLING'
-                return
-            # 3. Обычный боевой цикл: выпуск и атака
+            # 2. Обычный боевой цикл: выпуск и атака
             if state.drones_in_bay > 0 and state.drones_in_space == 0:
                 print("[Bot] Выпускаю дронов (Shift+F)")
                 self._press_shift('f')
                 time.sleep(5)  # Ждем, пока дроны выпустятся
             elif state.drones_in_space > 0 and not state.drones_fighting:
-                print("[Bot] Дроны в атаку! (F)")
-                pyautogui.press('f')
+                off_x, off_y = self._get_offset()
+                self._engage_drones_on_target(state, off_x, off_y)
                 time.sleep(1)
 
         elif self._drone_phase == 'RECALLING':
             if state.drones_in_space == 0:
+                self._drone_phase = 'WAITING_ATTACK'
+                self._drone_wait_start_ts = now
+                print("[Bot][Drones] Дроны в ангаре. Жду attackingMe ≥80% для выпуска...")
+
+        elif self._drone_phase == 'WAITING_ATTACK':
+            # Считаем долю NPC, которые атакуют КОРАБЛЬ
+            entries = getattr(state, 'overview_entries', None) or []
+            hostile = [e for e in entries
+                       if e.get('hostile') or e.get('attacking_me') or e.get('threat_hostile')]
+            total = len(hostile)
+            attacking_me = sum(1 for e in hostile if e.get('attacking_me'))
+            ratio = (attacking_me / total) if total > 0 else 0.0
+
+            elapsed = now - self._drone_wait_start_ts
+            release = (ratio >= 0.8) or (elapsed >= self.cfg['drone_release_wait'])
+
+            if release:
+                if ratio >= 0.8:
+                    why = f"{attacking_me}/{total} attackingMe"
+                else:
+                    why = f"timeout {elapsed:.0f}s"
+                print(f"[Bot][Drones] Условие выпуска: {why} — перехожу в COOLDOWN")
                 self._drone_phase = 'COOLDOWN'
                 self._drone_cooldown_until = now + self.cfg['drone_relaunch_delay']
-                print("[Bot][Drones] Все дроны в ангаре. Пауза перед перезапуском...")
+            else:
+                self._vlog_throttled('d_wait',
+                    f"drones: жду attackingMe ≥80% (сейчас {attacking_me}/{total}, "
+                    f"ещё {max(0, self.cfg['drone_release_wait'] - elapsed):.0f}с)")
 
         elif self._drone_phase == 'COOLDOWN':
             if now >= self._drone_cooldown_until:
-                print("[Bot][Drones] Перезапускаю дронов в бой (Shift+F)")
-                self._press_shift('f')
-                time.sleep(5)
-                self._drone_phase = 'FIGHTING'
+                off_x, off_y = self._get_offset()
+                if self._ensure_active_target(state, off_x, off_y):
+                    print("[Bot][Drones] Перезапускаю дронов в бой (Shift+F)")
+                    self._press_shift('f')
+                    time.sleep(5)
+                    self._drone_phase = 'FIGHTING'
 
     def _press_shift(self, key):
         """Shift+<key> (выпуск/сбор дронов)."""
-        pyautogui.keyDown('shift')
+        pyautogui.keyDown('shift')          # модификатор — pyautogui (ок)
         time.sleep(0.1)  # Даем игре время понять, что Shift зажат
-        pyautogui.press(key)
+        self._key_down_up(key)              # VK-код: работает на RU/EN
         time.sleep(0.1)
         pyautogui.keyUp('shift')
 

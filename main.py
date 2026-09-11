@@ -262,14 +262,6 @@ class EveApp:
         opts_frame = tk.Frame(self.root, bg='#1a1a1a', padx=10, pady=4)
         opts_frame.pack(fill=tk.X)
 
-        self.mode_var = tk.BooleanVar(value=False)
-        self.mode_check = tk.Checkbutton(opts_frame, text="Mode: DRONES (On/Off)", variable=self.mode_var,
-                                        command=self.on_mode_change,
-                                        bg='#1a1a1a', fg='#00ffaa',
-                                        selectcolor='black', activebackground='#1a1a1a',
-                                        activeforeground='#00ffaa')
-        self.mode_check.pack(anchor="w")
-
         self.verbose_var = tk.BooleanVar(value=False)
         tk.Checkbutton(opts_frame, text="Verbose Log", variable=self.verbose_var, command=self.toggle_verbose,
                        bg='#1a1a1a', fg='#cccccc', selectcolor='black',
@@ -293,10 +285,6 @@ class EveApp:
         self.log_view.bind("<Key>", lambda e: "break")
         
         tk.Button(self.root, text="EXIT", command=self.on_exit, bg='#333333', fg='white', relief="flat").pack(fill=tk.X, padx=10, pady=10)
-
-    def on_mode_change(self):
-        mode = "DRONES" if self.mode_var.get() else "GUNS"
-        self.update_log_widget(f"Combat mode changed to: {mode}")
 
     def toggle_verbose(self):
         """Синхронизация расширенного лога бота и клиента с чекбоксом."""
@@ -563,7 +551,7 @@ class EveApp:
             if self.running:
                 # Тик бота — в отдельном потоке: GUI и кнопка STOP реагируют
                 # мгновенно, даже пока бот кликает/ждёт внутри think().
-                self._start_bot_thread(state, use_drones=self.mode_var.get())
+                self._start_bot_thread(state, use_drones=False)
 
             # Баннер состояния + панель статистики (дёшево, каждый тик)
             self.update_banner(state)

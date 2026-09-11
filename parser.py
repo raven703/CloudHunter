@@ -838,12 +838,19 @@ def parse_drone_entry(entry_node: Dict) -> Dict:
         -> Container(gaugesParent) -> ... (полосы HP)
 
     Имя — часть текста ДО <color>..., статус — из <color>...</color> или _hint.
+
+    Полосы HP (для детекта урона дронов):
+      Fill(_name='droneGaugeBar', _displayWidth=32)   — полная полоса HP
+      Fill(_name='droneGaugeBarDmg', _displayWidth=0) — полоса урона (0 = нет урона)
+    bar_width/damage_width кладём в result — бот собирает дронов при damage/bar > 0.5.
     """
     result = {
         'name': '',
         'status': 'UNKNOWN',
         'hp': 100.0,
-        'under_attack': False
+        'under_attack': False,
+        'bar_width': 0,
+        'damage_width': 0,
     }
 
     name_candidates = []
@@ -865,6 +872,16 @@ def parse_drone_entry(entry_node: Dict) -> Dict:
             hint = str(ei.get('_hint', '') or '')
             if hint:
                 status_candidates.append(hint)
+
+        # Полосы HP: полная и урона (для детекта урона дрона по 50% порогу)
+        if t == 'Fill':
+            nm = str(ei.get('_name', '') or '')
+            if nm in ('droneGaugeBar', 'droneGaugeBarDmg'):
+                w = get_val(ei.get('_displayWidth'))
+                if nm == 'droneGaugeBar':
+                    result['bar_width'] = int(w)
+                else:
+                    result['damage_width'] = int(w)
 
         for child in node.get('children', []) or []:
             walk(child, depth + 1)
@@ -1192,7 +1209,12 @@ def parse_overview_entry(entry_node: Dict, ox: float = 0.0, oy: float = 0.0) -> 
         'type': '',
         'x': 0,
         'y': 0,
-        'icon': ''
+        'icon': '',
+        'npc_class': None,
+        'attacking_me': False,
+        'threat_hostile': False,
+        'hostile': False,
+        'targeted_by_me': False,
     }
     
     for child in entry_node.get('children', []):
@@ -1228,6 +1250,35 @@ def parse_overview_entry(entry_node: Dict, ox: float = 0.0, oy: float = 0.0) -> 
                         result['type'] = 'planet'
                     elif 'citadel' in str(texture):
                         result['type'] = 'citadel'
+                    # Класс NPC по имени текстуры ('npcfrigate' -> 'FRIGATE' и т.д.)
+                    tex = str(texture).lower()
+                    if 'npcfrigate' in tex:
+                        result['npc_class'] = 'FRIGATE'
+                    elif 'npcbattlecruiser' in tex:
+                        result['npc_class'] = 'BATTLECRUISER'
+                    elif 'npcbattleship' in tex:
+                        result['npc_class'] = 'BATTLESHIP'
+                    elif 'npccruiser' in tex:
+                        result['npc_class'] = 'CRUISER'
+                    elif 'npcdestroyer' in tex:
+                        result['npc_class'] = 'DESTROYER'
+
+            # Флаги NPC-состояний: BlinkingSpriteOnSharedCurve (внутри Transform
+            # внутри SpaceObjectIcon) — по _name узла
+            for node in iter_nodes(child):
+                if node.get('pythonObjectTypeName') == 'BlinkingSpriteOnSharedCurve':
+                    node_name = (node.get('dictEntriesOfInterest') or {}).get('_name', '')
+                    if node_name == 'attackingMe':
+                        result['attacking_me'] = True
+                    elif node_name == 'threatHostile':
+                        result['threat_hostile'] = True
+                    elif node_name == 'hostile':
+                        result['hostile'] = True
+                # Индикатор «взял в цель я» (Sprite targetedByMeIndicator)
+                elif node.get('pythonObjectTypeName') == 'Sprite':
+                    node_name = (node.get('dictEntriesOfInterest') or {}).get('_name', '')
+                    if node_name == 'targetedByMeIndicator':
+                        result['targeted_by_me'] = True
 
     return result if result['name'] else None
 
