@@ -925,28 +925,24 @@ class DroneController:
 
         entries = getattr(state, 'drone_entries', None) or []
         for d in entries:
-            # Щит дрона в процентах. Парсер пока кладёт сюда 100.0, но
-            # когда добавит shield_pct — подхватится автоматически.
-            # Если поля нет, считаем щит по bar_width/(bar_width+damage_width):
-            # bar_width — заполненная часть ПОЛОСЫ ЩИТА, damage_width —
-            # снятая часть. Деление даёт долю остатка щита.
+            # Смотрим ТОЛЬКО shield_pct — парсер drone_entry различает
+            # shield/armor/structure по имени родительского гейджа
+            # (shieldGauge/armorGauge/structureGauge) и кладёт сюда
+            # РЕАЛЬНЫЙ щит дрона 0..100.
+            #
+            # Раньше мы падали в fallback bar_width/(bar_width+damage_width),
+            # но эти поля могли относиться к armor — отсюда ложные recall'ы.
             shield = d.get('shield_pct')
             if not isinstance(shield, (int, float)):
-                bar = float(d.get('bar_width') or 0)
-                dmg = float(d.get('damage_width') or 0)
-                full = bar + dmg
-                if full <= 0:
-                    continue
-                shield = (bar / full) * 100.0
+                continue   # нет данных о щите — не трогаем
             if shield < threshold * 100.0:
                 print(f"[Drone] Щит {shield:.0f}% < {threshold*100:.0f}% у "
                       f"{d.get('name', '?')} — recall")
                 return True
 
-        # Fallback: агрегат от парсера (когда drone_entries пуст, но
-        # парсер всё равно видит under_attack в поддереве окна дронов)
-        if not entries and getattr(state, 'drones_under_attack', False):
-            return True
+        # НЕ используем state.drones_under_attack как fallback: этот флаг
+        # в парсере может выставляться неточно. У нас теперь есть точный
+        # shield_pct в каждой записи.
         return False
 
 # =============================================================================

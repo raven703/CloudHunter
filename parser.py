@@ -927,38 +927,85 @@ def parse_drones(root: Dict) -> Dict[str, Any]:
 def parse_drone_entry(entry_node: Dict) -> Dict:
     """Парсинг одной записи дрона (DroneInSpaceEntry).
 
-    Реальная структура:
+    Структура:
       DroneInSpaceEntry
         -> Container(mainCont) -> Container(textClipper)
              -> TextBody(_name='entryLabel',
                          _setText='Caldari Navy Vespa <color=#FF8DC169>Idle</color>')
         -> Sprite(_name='stateSprite', _hint='Idle')
-        -> Container(gaugesParent) -> ... (полосы HP)
+        -> Container(gaugesParent)
+             -> Container(_name='shieldGauge')
+                  -> Fill(_name='droneGaugeBar', ...)     # остаток щита
+                  -> Fill(_name='droneGaugeBarDmg', ...)  # снятый урон щита
+             -> Container(_name='armorGauge')
+                  -> Fill(_name='droneGaugeBar', ...)
+                  -> Fill(_name='droneGaugeBarDmg', ...)
+             -> Container(_name='structureGauge')
+                  -> Fill(_name='droneGaugeBar', ...)
+                  -> Fill(_name='droneGaugeBarDmg', ...)
 
-    Имя — часть текста ДО <color>..., статус — из <color>...</color> или _hint.
+    Возвращает:
+      {'name', 'status', 'shield_pct', 'armor_pct', 'structure_pct',
+       'under_attack', 'bar_width', 'damage_width'}
 
-    Полосы HP (для детекта урона дронов):
-      Fill(_name='droneGaugeBar', _displayWidth=32)   — полная полоса HP
-      Fill(_name='droneGaugeBarDmg', _displayWidth=0) — полоса урона (0 = нет урона)
-    bar_width/damage_width кладём в result — бот собирает дронов при damage/bar > 0.5.
+    shield_pct = bar_width / (bar_width + damage_width) * 100
+      bar_width — заполненная часть ПОЛОСЫ ЩИТА (Fill 'droneGaugeBar'
+                  внутри контейнера с _name, содержащим 'shield').
+      damage_width — снятая часть (Fill 'droneGaugeBarDmg' там же).
+
+    Полосы различаем по ИМЕНИ БЛИЖАЙШЕГО ПРЕДКА: у shield-полосы предок
+    называется 'shieldGauge', у armor — 'armorGauge', у structure —
+    'structureGauge' (тот же паттерн, что у ShipHudSpriteGauge корабля,
+    см. parse_hp_gauges). Ищем предка по подстроке без регистра:
+    'shield', 'armor', 'structure' / 'hull'.
+
+    Если предок не опознан (структура дампа изменилась) — оставляем
+    группы в порядке обхода и раскладываем по порядку: shield -> armor
+    -> structure (сверху вниз, как в UI EVE).
     """
-    result = {
+    result: Dict[str, Any] = {
         'name': '',
         'status': 'UNKNOWN',
-        'hp': 100.0,
+        'shield_pct': None,
+        'armor_pct': None,
+        'structure_pct': None,
         'under_attack': False,
         'bar_width': 0,
         'damage_width': 0,
     }
 
-    name_candidates = []
-    status_candidates = []
+    name_candidates: List[Tuple[str, str]] = []
+    status_candidates: List[str] = []
 
-    def walk(node, depth=0):
-        if not isinstance(node, dict) or depth > 6:
+    # Ключ — класс группы: 'shield' / 'armor' / 'structure'.
+    # Значение — {'bar': w, 'dmg': w}. dict сохраняет порядок вставки
+    # (Python 3.7+), поэтому fallback «по порядку обхода» работает.
+    gauges: Dict[str, Dict[str, int]] = {}
+
+    def _classify_gauge(node_name: str) -> Optional[str]:
+        """Класс гейджа по _name: 'shield'|'armor'|'structure' или None."""
+        n = node_name.lower()
+        if 'shield' in n:
+            return 'shield'
+        if 'armor' in n:
+            return 'armor'
+        if 'structure' in n or 'hull' in n:
+            return 'structure'
+        return None
+
+    def walk(node, depth=0, current_class: Optional[str] = None):
+        if not isinstance(node, dict) or depth > 8:
             return
         t = node.get('pythonObjectTypeName', '')
         ei = node.get('dictEntriesOfInterest', {}) or {}
+        node_name = str(ei.get('_name', '') or '')
+
+        # Если текущий узел — контейнер-гейдж, включаем контекст для детей.
+        next_class = current_class
+        if 'Gauge' in node_name:
+            cls = _classify_gauge(node_name)
+            if cls:
+                next_class = cls
 
         if t == 'TextBody':
             raw = str(ei.get('_setText', '') or ei.get('_text', '') or '')
@@ -971,24 +1018,75 @@ def parse_drone_entry(entry_node: Dict) -> Dict:
             if hint:
                 status_candidates.append(hint)
 
-        # Полосы HP: полная и урона (для детекта урона дрона по 50% порогу)
-        if t == 'Fill':
-            nm = str(ei.get('_name', '') or '')
-            if nm in ('droneGaugeBar', 'droneGaugeBarDmg'):
-                w = get_val(ei.get('_displayWidth'))
-                if nm == 'droneGaugeBar':
-                    result['bar_width'] = int(w)
-                else:
-                    result['damage_width'] = int(w)
+        # Полоса HP: Fill 'droneGaugeBar' / 'droneGaugeBarDmg' внутри
+        # контейнера-гейджа (next_class != None).
+        if t == 'Fill' and next_class and \
+                node_name in ('droneGaugeBar', 'droneGaugeBarDmg'):
+            w = int(get_val(ei.get('_displayWidth')))
+            if next_class not in gauges:
+                gauges[next_class] = {'bar': 0, 'dmg': 0}
+            if node_name == 'droneGaugeBar':
+                gauges[next_class]['bar'] = w
+            else:
+                gauges[next_class]['dmg'] = w
 
         for child in node.get('children', []) or []:
-            walk(child, depth + 1)
+            walk(child, depth + 1, next_class)
 
     walk(entry_node)
 
+    # --- Fallback: если ни одна группа не опознана по имени предка,
+    #     берём порядок обхода. Первые три группы Fill -> shield, armor,
+    #     structure (сверху вниз, как в UI EVE). ---
+    if not gauges:
+        raw_groups: List[Dict[str, int]] = []
+        def walk_raw(node, depth=0):
+            if not isinstance(node, dict) or depth > 8:
+                return
+            t = node.get('pythonObjectTypeName', '')
+            ei = node.get('dictEntriesOfInterest', {}) or {}
+            nm = str(ei.get('_name', '') or '')
+            if t == 'Fill' and nm in ('droneGaugeBar', 'droneGaugeBarDmg'):
+                w = int(get_val(ei.get('_displayWidth')))
+                # Новая группа начинается с 'droneGaugeBar'.
+                if nm == 'droneGaugeBar':
+                    raw_groups.append({'bar': w, 'dmg': 0})
+                elif raw_groups:
+                    raw_groups[-1]['dmg'] = w
+            for child in node.get('children', []) or []:
+                walk_raw(child, depth + 1)
+        walk_raw(entry_node)
+        order = ('shield', 'armor', 'structure')
+        for i, g in enumerate(raw_groups[:3]):
+            gauges[order[i]] = g
+
+    # Считаем проценты по группам
+    def _pct(gauge_key: str) -> Optional[float]:
+        g = gauges.get(gauge_key)
+        if not g:
+            return None
+        bar = g['bar']
+        dmg = g['dmg']
+        full = bar + dmg
+        if full <= 0:
+            return None
+        return max(0.0, min(100.0, (bar / full) * 100.0))
+
+    result['shield_pct'] = _pct('shield')
+    result['armor_pct'] = _pct('armor')
+    result['structure_pct'] = _pct('structure')
+
+    # Обратная совместимость: bar_width/damage_width — от ЩИТА, если есть.
+    sg = gauges.get('shield')
+    if sg:
+        result['bar_width'] = sg['bar']
+        result['damage_width'] = sg['dmg']
+
+    # under_attack = есть снятый урон по щиту
+    if result['shield_pct'] is not None and result['shield_pct'] < 99.0:
+        result['under_attack'] = True
+
     # Статус: из _hint спрайта (приоритет) или из <color>...</color> в тексте.
-    # Возможные _hint у stateSprite в EVE: 'Idle', 'Attacking', 'Fighting',
-    # 'Engaging', 'Returning', 'Mining', 'Following'...
     def _st_from_text(low):
         if 'idle' in low:
             return 'IDLE'
@@ -1005,22 +1103,20 @@ def parse_drone_entry(entry_node: Dict) -> Dict:
 
     # Имя: часть текста ДО цветового статуса
     for raw, text in name_candidates:
-        # 'Caldari Navy Vespa <color=#FF8DC169>Idle</color>'
         m = re.search(r'<color[^>]*>([^<]+)</color>', raw)
         if m:
             st = _st_from_text(m.group(1).strip().lower())
             if st:
                 result['status'] = st
-            # имя = текст до <color
             name_part = raw.split('<color')[0].strip()
             name = clean_html(name_part)
             if name:
                 result['name'] = name
         elif text and not result['name']:
-            # нет цветового тега — имя это весь текст (вырезаем слово-статус)
-            result['name'] = re.sub(r'\b(Idle|Fighting|Returning|Attacking|Engaging)\b', '', text, flags=re.I).strip()
+            result['name'] = re.sub(
+                r'\b(Idle|Fighting|Returning|Attacking|Engaging)\b',
+                '', text, flags=re.I).strip()
 
-    # Если имя так и не нашли, а статус остался в тексте — отрезаем хвост
     if not result['name'] and name_candidates:
         m = re.match(r'^([^<]+?)\s*<color', name_candidates[0][0])
         if m:
@@ -1029,7 +1125,6 @@ def parse_drone_entry(entry_node: Dict) -> Dict:
             result['name'] = name_candidates[0][1]
 
     return result
-
 
 # ==================== ПАРСЕР ЦЕЛЕЙ (l_target) ====================
 
@@ -2275,12 +2370,16 @@ def build_debug_blocks(state: ParsedUIState) -> List[Tuple[str, str]]:
     if entries:
         add('header', "  -- DRONES IN SPACE --")
         for d in entries:
-            d_hp = float(d.get('hp', 100))
             name = str(d.get('name') or '?')
             st = str(d.get('status') or 'UNKNOWN')
             st_tag = 'good' if st == 'IDLE' else ('warn' if st == 'FIGHTING' else 'info')
-            hp_tag = _pct_tag(d_hp)
-            add(st_tag, f"     {name:<24} {st:<9} {_bar(d_hp, 14)} {d_hp:.0f}%")
+            sh = d.get('shield_pct')
+            ar = d.get('armor_pct')
+            st_pct = d.get('structure_pct')
+            def _fp(v):
+                return f"{float(v):5.1f}%" if isinstance(v, (int, float)) else " n/a "
+            add(st_tag, f"     {name:<20} {st:<9} "
+                        f"sh={_fp(sh)} ar={_fp(ar)} st={_fp(st_pct)}")
 
     # ===== 4. ЦЕЛИ =====
     header("== TARGETS ==")
