@@ -1,0 +1,11 @@
+# Локальные настройки бота (генерируются автоматически)
+config.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Сырые дампы и временные файлы
+raw_dump_*.json
+main_out.txt

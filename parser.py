@@ -1,5 +1,6 @@
 from __future__ import annotations  
 from ParsedUIState import ParsedUIState
+from icon_roles import role_for_icon
 import json
 import re
 import time
@@ -73,13 +74,12 @@ _OVERVIEW_NAME_RE = re.compile(
 def _is_overview_name(text: str) -> bool:
     """Похоже ли значение на имя NPC в овервью.
 
-    Настоящее имя — начинается с заглавной буквы, содержит хотя бы
-    одну латинскую букву (NPC в EVE на латинице: 'Centii Butcher'),
-    не является чистым числом ('324'), не содержит запятой
-    ('0,19' — это угол/скорость), не длиннее 48 символов.
+    Настоящее имя — содержит хотя бы один латинский фрагмент из 2+ букв
+    (NPC в EVE на латинице: 'Centii Butcher'), не является чистым числом
+    ('324') и не десятичной дробью ('0,19', '-4,2'), не длиннее 48 символов.
 
-    Отсекает мусор: '324', '0,19', '-4,2', '160 km' (но 'km'
-    ловится _is_distance_label ДО этой проверки).
+    Отсекает мусор: '324', '0,19', '-4,2', '177' ('160 km' и '55 km'
+    ловятся _is_distance_label ДО этой проверки в parse_overview_entry).
     """
     t = (text or '').strip()
     if not t or len(t) > 48:
@@ -87,7 +87,74 @@ def _is_overview_name(text: str) -> bool:
     # не число и не '0,19'-подобное
     if re.fullmatch(r'[-+]?\d+([.,]\d+)?', t):
         return False
-    # не должно быть запятых (в именах NPC их нет)
+    # должен быть осмысленный латинский фрагмент (имена NPC — на латинице)
+    if not re.search(r'[A-Za-z]{2,}', t):
+        return False
+    return True
+
+
+# ==================== ПАРСЕР БУКМАРКОВ ====================
+
+def parse_bookmarks(root: Dict) -> List[Dict]:
+    """Список букмарков из окна Local Bookmarks.
+
+    Ищем все узлы PlaceEntry во всём дереве (в овервью используется
+    OverviewScrollEntry, так что PlaceEntry — только букмарки).
+    Текст записи в дочернем EveLabelMedium._setText, поля разделены '<t>':
+      '<Label><t><Type><t><Jumps><t><SOL><t><CON><t><REG><t><Date><t>-<t><Creator>'
+    Пример: 'safe1<t>Coordinate<t>0<t>RBW-8G<t>KUSW-P<t>Esote<t>2024.02.12 05:52<t>-<t>Nikky Naari'
+
+    Возвращает список:
+      {'label': str, 'type': str, 'jumps': int,
+       'sol': str, 'con': str, 'reg': str,
+       'x': float, 'y': float, 'h': int}
+    x/y — координаты строки букмарка (накапливаются от корня), h — высота
+    строки (для клика по центру).
+    """
+    result: List[Dict] = []
+
+    def walk(node: Dict, px: int, py: int) -> None:
+        if not isinstance(node, dict):
+            return
+        ei = node.get('dictEntriesOfInterest', {}) or {}
+        ax = px + get_val(ei.get('_displayX', 0))
+        ay = py + get_val(ei.get('_displayY', 0))
+
+        if node.get('pythonObjectTypeName') == 'PlaceEntry':
+            h = get_val(ei.get('_displayHeight', 0)) or 22
+            for sub in node.get('children', []) or []:
+                if sub.get('pythonObjectTypeName') != 'EveLabelMedium':
+                    continue
+                sei = sub.get('dictEntriesOfInterest', {}) or {}
+                raw = str(sei.get('_setText', '') or '')
+                if '<t>' not in raw:
+                    continue
+                parts = [clean_html(p) for p in raw.split('<t>')]
+                if len(parts) < 6:
+                    continue
+                try:
+                    jumps = int(parts[2]) if parts[2].strip().isdigit() else 0
+                except (ValueError, IndexError):
+                    jumps = 0
+                result.append({
+                    'label': parts[0],
+                    'type': parts[1],
+                    'jumps': jumps,
+                    'sol': parts[3] if len(parts) > 3 else '',
+                    'con': parts[4] if len(parts) > 4 else '',
+                    'reg': parts[5] if len(parts) > 5 else '',
+                    'x': ax,
+                    'y': ay,
+                    'h': h,
+                })
+            return
+
+        for ch in node.get('children', []) or []:
+            walk(ch, ax, ay)
+
+    walk(root, 0, 0)
+    return result
+
     if ',' in t:
         return False
     # должно быть хотя бы одно латинское слово (NPC на латинице)
@@ -1020,8 +1087,12 @@ def parse_target_entry(target_node: Dict, abs_x: int = 0, abs_y: int = 0) -> Opt
       TargetInBar('target')
         -> Container('barAndImageCont') -> Transform('iconPar')
              -> Transform -> ActiveTargetIndicator  (индикатор АКТИВНОЙ цели)
-        -> ContainerAutoSize('labelContainer')
+        -> Container('labelContainer')            <-- тип Container, НЕ ContainerAutoSize
              -> EveLabelSmall ('4GQ-XQ -', 'Kuvakei [FVHC]', '0 m')
+
+    labelContainer ищется РЕКУРСИВНО по _name (тип контейнера может
+    отличаться между версиями клиента: Container / ContainerAutoSize).
+    Активная цель — по ActiveTargetIndicator в поддереве.
     """
     result = {
         'name': '',
@@ -1032,28 +1103,31 @@ def parse_target_entry(target_node: Dict, abs_x: int = 0, abs_y: int = 0) -> Opt
     }
 
     # Активная цель помечена индикатором где-то в поддереве
-    # (TargetInBar -> barAndImageCont -> iconPar -> Transform -> ActiveTargetIndicator),
-    # поэтому ищем рекурсивно, а не только среди прямых детей.
+    # (TargetInBar -> barAndImageCont -> iconPar -> Transform -> ActiveTargetIndicator).
     if find_first_by_type(target_node, 'ActiveTargetIndicator'):
         result['is_active'] = True
 
-    # Имя и расстояние — из меток labelContainer
+    # Имя и расстояние — из меток внутри labelContainer (на любой глубине)
     name_parts = []
-    for sub in target_node.get('children', []):
-        if sub.get('pythonObjectTypeName') == 'ContainerAutoSize':
-            if sub.get('dictEntriesOfInterest', {}).get('_name') == 'labelContainer':
-                for label in sub.get('children', []):
-                    if label.get('pythonObjectTypeName') == 'EveLabelSmall':
-                        text = get_node_text(label)
-                        if not text:
-                            continue
-                        if _is_distance_label(text):
-                            result['distance'] = parse_distance(text)
-                        else:
-                            name_parts.append(text)
+    for node in iter_nodes(target_node):
+        nei = node.get('dictEntriesOfInterest', {}) or {}
+        if nei.get('_name') != 'labelContainer':
+            continue
+        for label in node.get('children', []) or []:
+            if label.get('pythonObjectTypeName') != 'EveLabelSmall':
+                continue
+            text = get_node_text(label)
+            if not text:
+                continue
+            if _is_distance_label(text):
+                result['distance'] = parse_distance(text)
+            elif _is_overview_name(text):
+                name_parts.append(text)
 
-    # Имя цели может занимать несколько строк — склеиваем их
-    result['name'] = ' '.join(name_parts) if name_parts else 'Target'
+    # Имя цели = последняя валидная метка (name_parts[-1]) — ровно то же имя,
+    # что в записи state.overview_entries, чтобы сравнения имён (фокус/дроны)
+    # совпадали строго. Фолбэк 'Target', если валидного имени не нашлось.
+    result['name'] = name_parts[-1].strip() if name_parts else 'Target'
 
     return result
 
@@ -1123,7 +1197,15 @@ def parse_selected_item(root: Dict) -> Optional[Dict]:
         'actions': [],
     }
 
-    # 1. Имя и дистанция — лейблы nameLabel/distanceLabel на любой глубине
+    # 1. Имя и дистанция — лейблы nameLabel/distanceLabel на любой глубине.
+    #    ВАЖНО: nameLabel — единственный источник истины для имени объекта.
+    #    Раньше цикл перезаписывал result['name'] на любом EveLabelMedium,
+    #    который проходил _is_overview_name — и под конец в имя попадал
+    #    служебный текст из окна ('Bounty: 3 000 ISK', 'Security: -0.5').
+    #    Теперь: приоритет — _name='nameLabel'; fallback — первый
+    #    валидный текст без служебных подстрок.
+    name_from_label = ''
+    name_fallback = ''
     for node in find_children_by_type(selected_wnd, 'EveLabelMedium'):
         nei = node.get('dictEntriesOfInterest', {}) or {}
         label_name = str(nei.get('_name', ''))
@@ -1132,8 +1214,21 @@ def parse_selected_item(root: Dict) -> Optional[Dict]:
             continue
         if label_name == 'distanceLabel' or _is_distance_label(text):
             result['distance'] = parse_distance(text)
-        elif text and _is_overview_name(text):
-            result['name'] = text
+        elif label_name == 'nameLabel' and _is_overview_name(text):
+            # Приоритетный источник имени — лейбл nameLabel.
+            name_from_label = text
+        elif _is_overview_name(text) and not name_fallback:
+            # Fallback: первый валидный текст, НЕ похожий на служебный
+            # hint (bounty/security/isk/единицы измерения). Окно
+            # SelectedItemWnd содержит их рядом с именем объекта.
+            low = text.lower()
+            if not any(k in low for k in (
+                    'bounty', 'security', 'status:', 'reward',
+                    'isk ', ' isk', 'au ', ' km', ' m/s', ' m ')):
+                name_fallback = text
+
+    # Итоговое имя: nameLabel приоритетнее, fallback — только если его нет.
+    result['name'] = name_from_label or name_fallback
 
     # 2. Иконка объекта (topCont -> iconCont -> Icon 'iconSprite')
     icon_node = find_first_by_type(selected_wnd, 'Icon')
@@ -1247,28 +1342,50 @@ def parse_overview_entry(entry_node: Dict, ox: float = 0.0, oy: float = 0.0) -> 
         'hostile': False,
         'targeted_by_me': False,
     }
-    
+
+    # Координаты строки из самого entry_node (работает даже без SpaceObjectIcon)
+    ei = entry_node.get('dictEntriesOfInterest', {}) or {}
+    entry_x = ox + get_val(ei.get('_displayX'))
+    entry_y = oy + get_val(ei.get('_displayY'))
+    entry_w = get_val(ei.get('_displayWidth'))
+    entry_h = get_val(ei.get('_displayHeight'))
+    if entry_w > 0 and entry_h > 0:
+        result['x'] = entry_x + entry_w // 2
+        result['y'] = entry_y + entry_h // 2
+
     for child in entry_node.get('children', []):
         if child.get('pythonObjectTypeName') == 'OverviewLabel':
             ei = child.get('dictEntriesOfInterest', {})
-            text = clean_html(str(ei.get('_text', '')))
-            
+            # Текст может лежать в _text или в _setText — зависит от версии
+            # клиента/eveui.exe, читаем оба поля.
+            text = clean_html(str(ei.get('_text') or ei.get('_setText') or ''))
+
             if _is_distance_label(text):
                 result['distance'] = parse_distance(text)
-            elif text and _is_overview_name(text):
+            elif text and _is_overview_name(text) and not result['name']:
+                # Берём только ПЕРВОЕ валидное имя: колонок с именем может
+                # быть несколько (Type + Name), без guard'а каждая следующая
+                # метка (в т.ч. мусорная) затирала бы уже найденное имя.
                 result['name'] = text
         
         if child.get('pythonObjectTypeName') == 'SpaceObjectIcon':
-            ei = child.get('dictEntriesOfInterest', {})
+            ei_icon = child.get('dictEntriesOfInterest', {})
             coords = get_node_coords(child, ox, oy)
             # Центр иконки (как в parse_npc_lists — туда же кликает бот)
-            result['x'] = coords['x'] + get_val(ei.get('_displayWidth', 0)) // 2
-            result['y'] = coords['y'] + get_val(ei.get('_displayHeight', 0)) // 2
+            # Обновляем координаты только если иконка имеет размеры
+            icon_w = get_val(ei_icon.get('_displayWidth', 0))
+            icon_h = get_val(ei_icon.get('_displayHeight', 0))
+            if icon_w > 0 and icon_h > 0:
+                result['x'] = coords['x'] + icon_w // 2
+                result['y'] = coords['y'] + icon_h // 2
             
             # Ищем иконку
             for sub in child.get('children', []):
                 if sub.get('pythonObjectTypeName') == 'Sprite':
-                    texture = sub.get('dictEntriesOfInterest', {}).get('_texturePath', '')
+                    sei = sub.get('dictEntriesOfInterest', {}) or {}
+                    # Путь текстуры обычно в _texturePath, но в некоторых
+                    # версиях дампа он же лежит в _text — проверяем оба поля.
+                    texture = sei.get('_texturePath') or sei.get('_text') or ''
                     result['icon'] = str(texture)
                     # Определяем тип по иконке
                     if 'station' in str(texture):
@@ -1310,6 +1427,20 @@ def parse_overview_entry(entry_node: Dict, ox: float = 0.0, oy: float = 0.0) -> 
                     node_name = (node.get('dictEntriesOfInterest') or {}).get('_name', '')
                     if node_name == 'targetedByMeIndicator':
                         result['targeted_by_me'] = True
+
+    # --- Fallback-классификация NPC по имя (если иконка не найдена) ---
+    if result['npc_class'] is None and result['name']:
+        if result['type'] not in ('station', 'stargate', 'planet', 'asteroid', 'citadel'):
+            name_lower = result['name'].lower()
+            npc_patterns = (
+                'pithi', 'guristas', 'sansha', 'angel', 'blood', 'serpentis',
+                'rogue', 'drone', 'mercenary', 'federation navy', 'caldari navy',
+                'amarr navy', 'minmatar', 'republic fleet', 'khanid', 'sleepers',
+                'triglavian', 'centii', 'estamel', 'pithum', 'coreli', 'cormant',
+                'victoire', 'kaikka', 'thukker', 'true', 'dark', 'shadow',
+            )
+            if any(pat in name_lower for pat in npc_patterns):
+                result['npc_class'] = 'NPC'
 
     return result if result['name'] else None
 
@@ -1896,6 +2027,37 @@ def parse_npc_lists(root: Dict) -> Dict[str, Any]:
         'battlecruisers': [], 'battleships': [], 'draw': [],
     }
 
+    def _npc_ship_type_from_icon(icon_node: Dict) -> Optional[str]:
+        """Класс NPC по _texturePath дочернего Sprite узла SpaceObjectIcon.
+
+        EVE кладёт класс NPC не в dictEntriesOfInterest узла, а в путь иконки:
+          res:/UI/Texture/Shared/Brackets/npcfrigate_16.png   -> FRIGATE
+          res:/UI/Texture/Shared/Brackets/npccruiser_16.png   -> CRUISER
+          res:/UI/Texture/Shared/Brackets/npcbattlecruiser_16.png -> BATTLECRUISER
+          res:/UI/Texture/Shared/Brackets/npcbattleship_16.png    -> BATTLESHIP
+          res:/UI/Texture/Shared/Brackets/npcdestroyer_16.png     -> DESTROYER
+        Возвращает None, если иконка не NPC.
+        """
+        for child in icon_node.get('children', []) or []:
+            if not isinstance(child, dict):
+                continue
+            cei = child.get('dictEntriesOfInterest', {}) or {}
+            tex = str(cei.get('_texturePath', '')).lower()
+            if 'npc' not in tex:
+                continue
+            if 'npcbattlecruiser' in tex:
+                return "BATTLECRUISER"
+            if 'npcbattleship' in tex:
+                return "BATTLESHIP"
+            if 'npccruiser' in tex:
+                return "CRUISER"
+            if 'npcfrigate' in tex:
+                return "FRIGATE"
+            if 'npcdestroyer' in tex:
+                return "DESTROYER"
+            return "NPC"
+        return None
+
     def walk(node: Dict, px: float, py: float) -> None:
         if not isinstance(node, dict):
             return
@@ -1905,13 +2067,17 @@ def parse_npc_lists(root: Dict) -> Dict[str, Any]:
         ax, ay = px + lx, py + ly
 
         if node.get('pythonObjectTypeName') == 'SpaceObjectIcon':
-            # Сканируем данные узла и его прямых детей на наличие 'npc'
-            values = list(ei.values())
-            for child in node.get('children', []) or []:
-                cei = child.get('dictEntriesOfInterest', {}) or {}
-                values.extend(cei.values())
-
-            ship_type = _npc_ship_type(values)
+            # Класс NPC в дампе лежит в _texturePath дочернего Sprite:
+            # 'res:/UI/Texture/Shared/Brackets/npcfrigate_16.png' -> FRIGATE.
+            # Дополнительно проверяем dictEntriesOfInterest самого узла
+            # (на случай смены структуры дампа).
+            ship_type = _npc_ship_type_from_icon(node)
+            if ship_type is None:
+                values = list(ei.values())
+                for child in node.get('children', []) or []:
+                    cei = child.get('dictEntriesOfInterest', {}) or {}
+                    values.extend(cei.values())
+                ship_type = _npc_ship_type(values)
             if ship_type:
                 coords = (ax + w / 2, ay + h / 2)
                 result['all'].append(coords)
@@ -2059,6 +2225,9 @@ def build_debug_blocks(state: ParsedUIState) -> List[Tuple[str, str]]:
     mov_tag = 'good' if mov in ('ORBITING', 'STATIONARY', 'MOVING') else ('warn' if mov == 'ALIGNING' else 'danger')
     add(mov_tag, f"  state     {mov}")
     dim(f"  flags     warp={state.is_warp} establish={state.is_establishing} orbit={state.is_orbiting} docked={state.is_docked}")
+    add('good' if getattr(state, 'orbit_hint_active', False) else 'dim',
+        f"  orbit_hint_active: {getattr(state, 'orbit_hint_active', False)} "
+        f"(EVE ждёт клика для Orbit)")
 
     # ===== 2. МОДУЛИ =====
     header("== MODULES ==")
@@ -2254,37 +2423,40 @@ def build_debug_blocks(state: ParsedUIState) -> List[Tuple[str, str]]:
 
 def _finalize_state(state: ParsedUIState) -> None:
     """До-расчёт полей, которые full_parser не заполняет:
-    - repairers: модули-ремонтники по иконке (как в старом парсере);
-    - prop_modules: двигатель (afterburner/MWD) по иконке;
+    - repairers: модули-ремонтники (роль repair_* из icon_to_role.json);
+    - prop_modules: двигатель (AB/MWD, роль propulsion);
     - combat_mode_active: эвристика по текущей обстановке.
-    """
-    # 1. Репки — определяем по иконке модуля (репер иконки как в parser.py)
-    rep_icon = '1_64_11'
-    repairers: Dict[str, str] = {}
-    for slot_list in (state.high_slots, state.medium_slots, state.low_slots):
-        for m in slot_list or []:
-            icon = str(m.get('icon') or '')
-            if rep_icon in icon.lower() or 'repair' in icon.lower():
-                slot_name = m.get('name', '')
-                if slot_name:
-                    repairers[slot_name] = 'ACTIVE' if m.get('active') else 'READY'
-    state.repairers = repairers
 
-    # 1b. Двигатель (afterburner/MWD) — по иконке модуля.
-    #     3_64_2 — иконка доп.движения (AB/MWD) в HUD, 1_64_8 — вариант
-    #     из других скинов/клиентов. Бот держит двигатель всегда включённым.
-    prop_icons = ('3_64_2', '1_64_8')
+    Роль определяется по ИКОНКЕ модуля через карту icon_to_role.json,
+    которая генерируется из EVE SDE (invTypes+invGroups+eveIcons) и
+    покрывает все мета-уровни AB/MWD/репок (T1/T2/faction/abyssal),
+    а не только те, что были прописаны в хардкоде.
+    """
+    # 1. Проходим по всем слотам, определяем роль каждого модуля по иконке
+    repairers: Dict[str, str] = {}
     prop_modules: Dict[str, str] = {}
+
     for slot_list in (state.high_slots, state.medium_slots, state.low_slots):
         for m in slot_list or []:
-            icon = str(m.get('icon') or '').lower()
+            icon = str(m.get("icon") or "")
             if not icon:
                 continue
-            if (any(p in icon for p in prop_icons)
-                    or 'afterburner' in icon or 'microwarp' in icon):
-                slot_name = m.get('name', '')
-                if slot_name:
-                    prop_modules[slot_name] = 'ACTIVE' if m.get('active') else 'READY'
+            role = role_for_icon(icon)
+            if not role:
+                continue
+            slot_name = m.get("name", "")
+            if not slot_name:
+                continue
+            status = "ACTIVE" if m.get("active") else "READY"
+
+            if role == "propulsion":
+                prop_modules[slot_name] = status
+            elif role.startswith("repair"):
+                # repair_armor, repair_shield, repair_hull,
+                # repair_remote_*, repair_shield_amp — все считаются репками.
+                repairers[slot_name] = status
+
+    state.repairers = repairers
     state.prop_modules = prop_modules
 
     # 2. Боевой режим (отображается в окне отладки, боту не передаётся)
@@ -2296,7 +2468,6 @@ def _finalize_state(state: ParsedUIState) -> None:
         state.combat_mode_active = "GUNS"
     else:
         state.combat_mode_active = "IDLE"
-
 
 _LOCK_RANGE_RE = re.compile(r'within\s+(?:<[^>]+>)*\s*(\d+)\s*(?:<[^>]+>)*\s*km', re.IGNORECASE)
 
@@ -2464,6 +2635,13 @@ def parse_ui_root(json_data: Dict) -> ParsedUIState:
         if 'docked' in joined:
             state.is_docked = True
 
+        # NEW: сигнал готовности к W+клику.
+        # EVE показывает 'Orbit' (caption) + 'Click target' (text), когда W зажата
+        # и клиент ждёт клика по цели. Это единственный надёжный признак того,
+        # что W-down дошла до EVE — вместо гадания с паузами.
+        if 'orbit' in joined and 'click target' in joined:
+            state.orbit_hint_active = True
+
     # Fallback 1: скорость в варпе огромная
     if not state.is_warp and state.speed > 100000:
         state.is_warp = True
@@ -2483,6 +2661,9 @@ def parse_ui_root(json_data: Dict) -> ParsedUIState:
 
     # ====== МОДАЛКИ ======
     state.modal_info = parse_modal_info(root)
+
+    # ====== БУКМАРКИ (Local Bookmarks / Places) ======
+    state.bookmarks = parse_bookmarks(root)
 
     # ====== ФИНАЛИЗАЦИЯ (репки/двигатель/режим) ======
     _finalize_state(state)

@@ -26,6 +26,7 @@ class ParsedUIState:
     is_establishing: bool = False
     is_orbiting: bool = False
     is_docked: bool = False
+    orbit_hint_active: bool = False   # True = EVE показала 'Orbit' + 'Click target' (W зажата, ждёт клика)
     
     # === МОДУЛИ ===
     modules: Dict[str, str] = field(default_factory=dict)  # {slot_name: "ACTIVE"|"READY"|"OFFLINE"}
@@ -112,6 +113,8 @@ class ParsedUIState:
     lock_range_km: Optional[float] = None
     # Максимальная дистанция захвата цели (из QuickMessage клиента),
     # в километрах. None = клиент ещё не показывал такое сообщение.
+    bookmarks: List[Dict[str, Any]] = field(default_factory=list)
+    # Букмарки из окна Places: [{'label','type','jumps','sol','con','reg','x','y','h'}, ...]
     chat_channels: List[str] = field(default_factory=list)
     fps: int = 0
 

@@ -205,23 +205,42 @@ class EveApp:
         self.root = tk.Tk()
         self.root.title("EVE Pilot Panel")
         
-        win_w, win_h = 400, 950
+        win_w, win_h = 420, 980
         screen_w = self.root.winfo_screenwidth()
         self.root.geometry(f"{win_w}x{win_h}+{screen_w - win_w}+{10}")
         self.root.configure(bg='#1a1a1a')
 
         # --- NN CONTROL: атрибуты до build_ui (чекбокс их читает) ---
         self.nn_control_var = tk.BooleanVar(value=False)
+        # Verbose: создаём ДО _load_config (в build_ui остаётся только чекбокс)
+        self.verbose_var = tk.BooleanVar(value=False)
         self._nn_last_action_ts = 0.0
         self._nn_warn_ts = 0.0
         self._last_logic_err_text = ''
         self._last_logic_err_ts = 0.0
 
+        # --- Путь к config.json (рядом с main.py) ---
+        self.config_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), 'config.json')
+
+        # --- HP WARP настройки (GUI) ---
+        self.hp_warp_var = tk.BooleanVar(value=True)
+        self.hp_warp_source_var = tk.StringVar(value='shield')
+        self.hp_warp_threshold_var = tk.StringVar(value='40')
+        self.hp_warp_cooldown_var = tk.StringVar(value='30')
+
+        # --- Local Control (hostile/neutral в локале → safe) ---
+        self.local_control_var = tk.BooleanVar(value=True)
+
+        # --- Lock Range (лимит захвата, км) ---
+        self.lock_range_var = tk.StringVar(value='70')
+
+        # Загружаем сохранённые настройки ДО build_ui, чтобы виджеты
+        # создались с уже нужными значениями (чекбоксы, спинбоксы).
+        self._load_config()
+
         self.build_ui()
         self.parser_debug_window = ParserDebugWindow(self.root)
-
-        self.stderr_redirector = WidgetLogger(self.log_safe)
-        sys.stderr = self.stderr_redirector
 
         # Статистика сессии: бот (bot.py) обновляет, GUI показывает
         self.stats = {
@@ -249,15 +268,38 @@ class EveApp:
 
         self.btn_start.config(state="disabled")
         self.root.after(100, self._choose_window_and_start_parser)
+        self.root.after(300, self._apply_all_cfg)
+
+    def _apply_all_cfg(self):
+        """Применить все настройки GUI к bot.cfg после создания bot.
+
+        Вызывается через root.after(300) — после build_ui и создания
+        EveBot. Дополнительно синхронизирует verbose в client/bot.
+        """
+        self._apply_hp_warp_cfg()
+        self._apply_local_control_cfg()
+        self._apply_lock_range_cfg()
+        # verbose применяется к объектам, если они уже созданы
+        if getattr(self, 'bot', None) is not None:
+            self.bot.verbose = bool(self.verbose_var.get())
+        if getattr(self, 'client', None) is not None:
+            self.client.verbose = bool(self.verbose_var.get())
 
     def log_safe(self, text):
         if self.root.winfo_exists():
             self.root.after(0, self.update_log_widget, text)
 
     def update_log_widget(self, text):
-        if self.log_view.winfo_exists():
-            self.log_view.insert(tk.END, f"[{time.strftime('%H:%M:%S')}] {text}\n")
-            self.log_view.see(tk.END)
+        # log_view создаётся в build_ui; до этого вызова могут прийти из
+        # _load_config → _save_config (пишет в stderr -> сюда) — гардим.
+        if not hasattr(self, 'log_view'):
+            return
+        try:
+            if self.log_view.winfo_exists():
+                self.log_view.insert(tk.END, f"[{time.strftime('%H:%M:%S')}] {text}\n")
+                self.log_view.see(tk.END)
+        except tk.TclError:
+            pass
 
     def build_ui(self):
         # ---- Баннер состояния бота (красный/жёлтый/зелёный/синий) ----
@@ -314,7 +356,6 @@ class EveApp:
         opts_frame = tk.Frame(self.root, bg='#1a1a1a', padx=10, pady=4)
         opts_frame.pack(fill=tk.X)
 
-        self.verbose_var = tk.BooleanVar(value=False)
         tk.Checkbutton(opts_frame, text="Verbose Log", variable=self.verbose_var, command=self.toggle_verbose,
                        bg='#1a1a1a', fg='#cccccc', selectcolor='black',
                        activebackground='#1a1a1a', activeforeground='#ffffff').pack(anchor="w")
@@ -323,31 +364,242 @@ class EveApp:
                        command=self.on_nn_control_change,
                        bg='#1a1a1a', fg='#ffaa00', selectcolor='black',
                        activebackground='#1a1a1a', activeforeground='#ffaa00').pack(anchor="w")
+        tk.Checkbutton(opts_frame,
+                       text="Local Control (hostile/neutral → safe)",
+                       variable=self.local_control_var,
+                       command=self._apply_local_control_cfg,
+                       bg='#1a1a1a', fg='#ff6666', selectcolor='black',
+                       activebackground='#1a1a1a',
+                       activeforeground='#ff6666').pack(anchor="w")
 
-        tk.Label(self.root, text="WORLD STATUS", bg='#1a1a1a', fg='#888888', font=("Arial", 8, "bold")).pack(anchor="w", padx=10)
-        # state="disabled" позволяет копировать, но запрещает ввод
-        self.status_view = tk.Text(self.root, height=18, bg='black', fg='#00ccff', font=("Consolas", 10), padx=10, pady=10, relief="flat", state="normal")
-        self.status_view.pack(fill=tk.X, padx=10, pady=5)
-        # Только для чтения: блокируем ввод, но оставляем выделение/копирование
+        # --- HP WARP SETTINGS ---
+        hp_frame = tk.LabelFrame(self.root, text="HP WARP (отход при низком HP)",
+                                 bg='#1a1a1a', fg='#ffaa00',
+                                 font=("Arial", 9, "bold"), padx=8, pady=4)
+        hp_frame.pack(fill=tk.X, padx=10, pady=(6, 0))
+
+        row1 = tk.Frame(hp_frame, bg='#1a1a1a')
+        row1.pack(fill=tk.X)
+        tk.Checkbutton(row1, text="Enabled", variable=self.hp_warp_var,
+                       command=self._apply_hp_warp_cfg,
+                       bg='#1a1a1a', fg='#cccccc', selectcolor='black',
+                       activebackground='#1a1a1a',
+                       activeforeground='#ffffff').pack(side=tk.LEFT)
+
+        tk.Label(row1, text="  Source:", bg='#1a1a1a', fg='#cccccc',
+                 font=("Arial", 9)).pack(side=tk.LEFT)
+        for src in ('shield', 'armor', 'min'):
+            tk.Radiobutton(row1, text=src, value=src,
+                           variable=self.hp_warp_source_var,
+                           command=self._apply_hp_warp_cfg,
+                           bg='#1a1a1a', fg='#88ddff', selectcolor='black',
+                           activebackground='#1a1a1a',
+                           activeforeground='#88ddff',
+                           font=("Arial", 9)).pack(side=tk.LEFT, padx=2)
+
+        row2 = tk.Frame(hp_frame, bg='#1a1a1a')
+        row2.pack(fill=tk.X, pady=(4, 0))
+        tk.Label(row2, text="Threshold %:", bg='#1a1a1a', fg='#cccccc',
+                 font=("Arial", 9)).pack(side=tk.LEFT)
+        tk.Spinbox(row2, from_=1, to=99, width=4,
+                   textvariable=self.hp_warp_threshold_var,
+                   command=self._apply_hp_warp_cfg,
+                   bg='#0a0a0a', fg='#88ddff', buttonbackground='#333333',
+                   font=("Arial", 9)).pack(side=tk.LEFT, padx=(4, 12))
+
+        tk.Label(row2, text="Cooldown s:", bg='#1a1a1a', fg='#cccccc',
+                 font=("Arial", 9)).pack(side=tk.LEFT)
+        tk.Spinbox(row2, from_=5, to=600, width=5,
+                   textvariable=self.hp_warp_cooldown_var,
+                   command=self._apply_hp_warp_cfg,
+                   bg='#0a0a0a', fg='#88ddff', buttonbackground='#333333',
+                   font=("Arial", 9)).pack(side=tk.LEFT, padx=4)
+
+        tk.Label(hp_frame,
+                 text="При срабатывании: dock-станция (Dock) → safe (Warp).",
+                 bg='#1a1a1a', fg='#666666',
+                 font=("Arial", 8)).pack(anchor="w", pady=(2, 0))
+
+        # --- LOCK RANGE SETTINGS ---
+        lock_frame = tk.LabelFrame(self.root, text="LOCK RANGE (лимит захвата, км)",
+                                   bg='#1a1a1a', fg='#ffaa00',
+                                   font=("Arial", 9, "bold"), padx=8, pady=2)
+        lock_frame.pack(fill=tk.X, padx=10, pady=(4, 0))
+        lock_row = tk.Frame(lock_frame, bg='#1a1a1a')
+        lock_row.pack(fill=tk.X)
+        tk.Label(lock_row, text="Default km:", bg='#1a1a1a', fg='#cccccc',
+                 font=("Arial", 9)).pack(side=tk.LEFT)
+        tk.Spinbox(lock_row, from_=10, to=250, width=5,
+                   textvariable=self.lock_range_var,
+                   command=self._apply_lock_range_cfg,
+                   bg='#0a0a0a', fg='#88ddff', buttonbackground='#333333',
+                   font=("Arial", 9)).pack(side=tk.LEFT, padx=4)
+        tk.Label(lock_frame,
+                 text="Fallback-лимит лока, если клиент ещё не показал QuickMessage.",
+                 bg='#1a1a1a', fg='#666666',
+                 font=("Arial", 8)).pack(anchor="w", pady=(2, 0))
+
+        # --- WORLD STATUS: фиксированная высота (не расширяется) ---
+        tk.Label(self.root, text="WORLD STATUS", bg='#1a1a1a', fg='#888888',
+                 font=("Arial", 8, "bold")).pack(anchor="w", padx=10)
+        self.status_view = tk.Text(self.root, height=10, bg='black', fg='#00ccff',
+                                   font=("Consolas", 9), padx=8, pady=6,
+                                   relief="flat", state="normal")
+        self.status_view.pack(fill=tk.X, padx=10, pady=(2, 5))
         self.status_view.bind("<Key>", lambda e: "break")
 
-        tk.Label(self.root, text="CONSOLE LOG", bg='#1a1a1a', fg='#888888', font=("Arial", 8, "bold")).pack(anchor="w", padx=10)
-        self.log_view = tk.Text(self.root, bg='black', fg='#777777', font=("Consolas", 9), padx=10, pady=5, relief="flat", state="normal")
-        self.log_view.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        # --- CONSOLE LOG: растягивается на всё свободное место ---
+        tk.Label(self.root, text="CONSOLE LOG", bg='#1a1a1a', fg='#888888',
+                 font=("Arial", 8, "bold")).pack(anchor="w", padx=10)
+        log_frame = tk.Frame(self.root, bg='black')
+        log_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=(2, 5))
+
+        log_scroll = tk.Scrollbar(log_frame, command=lambda *a: self.log_view.yview(*a))
+        log_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.log_view = tk.Text(log_frame, bg='black', fg='#999999',
+                                font=("Consolas", 9), padx=8, pady=6,
+                                relief="flat", state="normal",
+                                yscrollcommand=log_scroll.set)
+        self.log_view.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.log_view.bind("<Key>", lambda e: "break")
-        
-        tk.Button(self.root, text="EXIT", command=self.on_exit, bg='#333333', fg='white', relief="flat").pack(fill=tk.X, padx=10, pady=10)
+
+        tk.Button(self.root, text="EXIT", command=self.on_exit, bg='#333333',
+                  fg='white', relief="flat").pack(fill=tk.X, padx=10, pady=(0, 10))
 
     def toggle_verbose(self):
         """Синхронизация расширенного лога бота и клиента с чекбоксом."""
         on = self.verbose_var.get()
-        self.client.verbose = on
-        self.bot.verbose = on
+        if getattr(self, 'client', None) is not None:
+            self.client.verbose = on
+        if getattr(self, 'bot', None) is not None:
+            self.bot.verbose = on
         self.update_log_widget(f"Verbose log: {'ON' if on else 'OFF'}")
+        self._save_config()
 
     def on_nn_control_change(self):
         on = self.nn_control_var.get()
         self.update_log_widget(f"NN CONTROL: {'ON' if on else 'OFF'}")
+        self._save_config()
+
+    def _apply_hp_warp_cfg(self):
+        """Применить настройки HP WARP из GUI в self.bot.cfg.
+
+        Вызывается по изменению любого элемента блока (Checkbutton /
+        Radiobutton / Spinbox). Значения пишутся в cfg бота — бот читает
+        их в _is_low_hp на каждом тике.
+        """
+        if not getattr(self, 'bot', None):
+            return
+        try:
+            thr = float(self.hp_warp_threshold_var.get())
+            thr = max(1.0, min(99.0, thr))
+        except (ValueError, TypeError):
+            thr = 40.0
+        try:
+            cd = float(self.hp_warp_cooldown_var.get())
+            cd = max(5.0, min(600.0, cd))
+        except (ValueError, TypeError):
+            cd = 30.0
+
+        self.bot.cfg['hp_warp_enabled'] = bool(self.hp_warp_var.get())
+        self.bot.cfg['hp_warp_source'] = str(self.hp_warp_source_var.get() or 'shield')
+        self.bot.cfg['hp_warp_threshold'] = thr
+        self.bot.cfg['hp_warp_cooldown'] = cd
+        self._save_config()
+
+    def _apply_local_control_cfg(self):
+        """Применить флаг Local Control из GUI в cfg бота."""
+        if not getattr(self, 'bot', None):
+            return
+        enabled = bool(self.local_control_var.get())
+        self.bot.cfg['local_control_enabled'] = enabled
+        self.update_log_widget(
+            f"Local Control: {'ON' if enabled else 'OFF'}")
+        self._save_config()
+
+    def _apply_lock_range_cfg(self):
+        """Применить лимит лока из GUI в cfg бота."""
+        if not getattr(self, 'bot', None):
+            return
+        try:
+            km = float(self.lock_range_var.get())
+            km = max(10.0, min(250.0, km))
+        except (ValueError, TypeError):
+            km = 70.0
+        self.bot.cfg['default_lock_range_km'] = km
+        self._save_config()
+
+    def _save_config(self):
+        """Сохранить все настройки GUI в config.json.
+
+        Вызывается при изменении любой настройки (HP WARP, Local Control,
+        Lock Range, Verbose, NN Control). Загрузка — в _load_config().
+        """
+        import json as _json
+        try:
+            cfg = {
+                'hp_warp_enabled': bool(self.hp_warp_var.get()),
+                'hp_warp_source': str(self.hp_warp_source_var.get() or 'shield'),
+                'hp_warp_threshold': self._safe_float(
+                    self.hp_warp_threshold_var.get(), 40.0, 1.0, 99.0),
+                'hp_warp_cooldown': self._safe_float(
+                    self.hp_warp_cooldown_var.get(), 30.0, 5.0, 600.0),
+                'local_control_enabled': bool(self.local_control_var.get()),
+                'default_lock_range_km': self._safe_float(
+                    self.lock_range_var.get(), 70.0, 10.0, 250.0),
+                'verbose': bool(self.verbose_var.get()),
+                'nn_control': bool(self.nn_control_var.get()),
+            }
+            with open(self.config_path, 'w', encoding='utf-8') as f:
+                _json.dump(cfg, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"[App] save_config error: {e}")
+
+    def _load_config(self):
+        """Загрузить настройки GUI из config.json (если файл есть).
+
+        Вызывается ДО build_ui — настройки применяются к tk-переменным,
+        а потом build_ui создаёт виджеты с уже нужными значениями.
+        """
+        import json as _json
+        if not os.path.exists(self.config_path):
+            return
+        try:
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                cfg = _json.load(f)
+        except Exception as e:
+            print(f"[App] load_config error: {e}")
+            return
+        # Применяем к tk-переменным (они уже созданы в __init__ до build_ui)
+        try:
+            if 'hp_warp_enabled' in cfg:
+                self.hp_warp_var.set(bool(cfg['hp_warp_enabled']))
+            if 'hp_warp_source' in cfg:
+                self.hp_warp_source_var.set(str(cfg['hp_warp_source']))
+            if 'hp_warp_threshold' in cfg:
+                self.hp_warp_threshold_var.set(str(cfg['hp_warp_threshold']))
+            if 'hp_warp_cooldown' in cfg:
+                self.hp_warp_cooldown_var.set(str(cfg['hp_warp_cooldown']))
+            if 'local_control_enabled' in cfg:
+                self.local_control_var.set(bool(cfg['local_control_enabled']))
+            if 'default_lock_range_km' in cfg:
+                self.lock_range_var.set(str(cfg['default_lock_range_km']))
+            if 'verbose' in cfg:
+                self.verbose_var.set(bool(cfg['verbose']))
+            if 'nn_control' in cfg:
+                self.nn_control_var.set(bool(cfg['nn_control']))
+        except Exception as e:
+            print(f"[App] load_config apply error: {e}")
+
+    @staticmethod
+    def _safe_float(val, default, lo, hi):
+        """Безопасный float из GUI-строки в диапазоне [lo, hi]."""
+        try:
+            v = float(val)
+        except (ValueError, TypeError):
+            return default
+        return max(lo, min(hi, v))
 
     def clear_log(self):
         self.log_view.delete("1.0", tk.END)
@@ -504,6 +756,19 @@ class EveApp:
         self.bot._just_exited_warp = False
         self.bot._combat_start_ts = 0.0
         self.bot._focus_name = None
+        # Сброс состояния боя: с прошлой сессии могли остаться
+        # _skip_coords (цели «в бане» на 60 сек) и незавершённый шаг FSM.
+        self.bot._combat_step = 'IDLE'
+        self.bot._lock_queue = []
+        self.bot._skip_coords.clear()
+        self.bot._focus_name = None
+        self.bot._engage_pending = False
+        self.bot._engage_target_name = None
+        self.bot._engage_coords = None
+        self.bot._engage_started_ts = 0.0
+        self.bot._engage_last_ts = 0.0
+        self.bot._entry_attempts = 0
+        self.bot._approach_target = None
         self.btn_start.config(state="disabled")
         self.btn_stop.config(state="normal")
         self.update_log_widget(f"SYSTEM: BOT STARTED ({self.bot.window_name})")
