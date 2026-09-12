@@ -259,8 +259,9 @@ class EveApp:
         self.running = False
         self._parser_ready = False
         # Тик бота выполняется в отдельном потоке: GUI (кнопка STOP) не
-        # блокируется на время действий pyautogui (клики, паузы).
+        # блокируется на время действий бота (клики, паузы).
         self._bot_thread = None
+        self._bot_thread_start_ts = 0.0
         # Флаг от потока хоткея Ctrl+Shift+S -> обрабатывается в logic_loop
         self._hotkey_stop_requested = False
 
@@ -752,27 +753,21 @@ class EveApp:
             self.update_log_widget("SYSTEM: парсер ещё не готов")
             return
         self.running = True
-        self.bot._stop_requested = False
-        self.bot._just_exited_warp = False
-        self.bot._combat_start_ts = 0.0
-        self.bot._focus_name = None
-        # Сброс состояния боя: с прошлой сессии могли остаться
-        # _skip_coords (цели «в бане» на 60 сек) и незавершённый шаг FSM.
-        self.bot._combat_step = 'IDLE'
-        self.bot._lock_queue = []
-        self.bot._skip_coords.clear()
-        self.bot._focus_name = None
-        self.bot._engage_pending = False
-        self.bot._engage_target_name = None
-        self.bot._engage_coords = None
-        self.bot._engage_started_ts = 0.0
-        self.bot._engage_last_ts = 0.0
-        self.bot._entry_attempts = 0
-        self.bot._approach_target = None
+        # Полный сброс состояния бота (боевой FSM, миссия, Safety,
+        # счётчики, таймеры, попытки probe scanner). Одна строка вместо
+        # ручного сброса десятков полей.
+        try:
+            self.bot.reset_session_state()
+        except Exception as e:
+            print(f"[App] reset_session_state error: {e}")
+        # Watchdog потока бота: новый тик можно стартовать сразу.
+        self._bot_thread = None
+        self._bot_thread_start_ts = 0.0
         self.btn_start.config(state="disabled")
         self.btn_stop.config(state="normal")
         self.update_log_widget(f"SYSTEM: BOT STARTED ({self.bot.window_name})")
 
+        
     def stop_bot(self):
         self.running = False
         # Кооперативная остановка: текущее действие бота завершится, новых
@@ -958,13 +953,27 @@ class EveApp:
         Одновременно живёт максимум один тик: пока предыдущий выполняет
         действия (клики, паузы), новые состояния пропускаются — бот возьмёт
         свежее состояние из очереди на следующем обороте logic_loop.
+
+        Watchdog: если предыдущий тик живёт дольше bot_thread_stuck_timeout,
+        считаем поток зависшим (например, pyautogui-клик заблокировался на
+        смене фокуса) и разрешаем запуск нового тика. Старый поток остаётся
+        демоном — умрёт с процессом.
         """
         t = self._bot_thread
         if t is not None and t.is_alive():
-            return
+            stuck_to = float(self.bot.cfg.get('bot_thread_stuck_timeout', 30.0))
+            elapsed = time.time() - getattr(self, '_bot_thread_start_ts', 0.0)
+            if elapsed < stuck_to:
+                return
+            print(f"[App] Bot thread stuck > {stuck_to:.0f}s "
+                  f"(elapsed={elapsed:.1f}s) — reset, запускаю новый тик")
+            self._bot_thread = None
+
+        self._bot_thread_start_ts = time.time()
         self._bot_thread = threading.Thread(
             target=self._bot_tick, args=(state, use_drones), daemon=True)
         self._bot_thread.start()
+
 
     def _bot_tick(self, state, use_drones):
         """Один think() бота вне GUI-потока (ошибки не роняют GUI)."""
