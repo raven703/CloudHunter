@@ -1144,20 +1144,18 @@ class SafetyController:
         self._current_spot = None
 
     def check(self, state) -> Optional[str]:
-        """Есть ли угроза, требующая отхода. Не блокирует повторные вызовы."""
-        # Локал (если разрешён)
+        """Есть ли угроза, требующая отхода."""
         if self.cfg.get('local_control_enabled', True):
             if getattr(state, 'local_has_hostile', False):
                 return 'hostile'
             if getattr(state, 'local_has_neutral', False):
                 return 'neutral'
-        # HP
         if self._is_low_hp(state):
             return 'low_hp'
         return None
 
     def is_threat_active(self, state, reason: str) -> bool:
-        """Публичная проверка: активна ли ещё указанная угроза.
+        """Активна ли ещё указанная угроза.
 
         Используется EveBot._step_safety для решения «пора снять Safety».
         reason: 'low_hp' | 'hostile' | 'neutral'.
@@ -1171,7 +1169,7 @@ class SafetyController:
         return False
 
     def trigger(self, state, reason: str, off_x: int = 0, off_y: int = 0) -> None:
-        """Начать процедуру отхода. Идемпотентно. off_x/off_y — экранное смещение."""
+        """Начать процедуру отхода. Идемпотентно."""
         if self._active:
             return
         now = time.monotonic()
@@ -1186,248 +1184,47 @@ class SafetyController:
         self._fsm_ts = 0.0
         self._start_warp_to_safe(state, off_x=off_x, off_y=off_y)
 
-    def tick(self, state, off_x: int, off_y: int) -> None:
-        """Один шаг FSM. Все переходы — здесь."""
+    def tick(self, state, off_x: int, off_y: int) -> bool:
+        """Продолжение FSM отхода. True — Safety ещё активен (занимает тик)."""
+        if not self._active:
+            return False
         now = time.monotonic()
 
-        # 0. Прилёт — settle-пауза
-        if self._just_exited_warp:
-            self._just_exited_warp = False
-            self._combat_start_ts = now
-            print(f"[Combat] Выход из варпа — settle {self.cfg['warp_exit_settle']:.1f} с")
-        if (self._combat_start_ts > 0 and
-                now - self._combat_start_ts < self.cfg['warp_exit_settle']):
-            return
+        if self._fsm == 'MENU_WAIT':
+            if getattr(state, 'menu_open', False) and (state.menu_items or []):
+                if now - self._fsm_ts < self.cfg['menu_settle']:
+                    return True
+                item = self.menu.pick_dock_or_warp0(
+                    state.menu_items, prefer_dock=self._prefer_dock)
+                if item:
+                    print(f"[Safety] Пункт '{item.get('text')}' — клик")
+                    self.menu.click_item(item, off_x, off_y)
+                    self._fsm = 'WARP_CLICKED'
+                    self._fsm_ts = now
+                    return True
+                print("[Safety] Нужный пункт не найден — сброс")
+                self._fsm = 'IDLE'
+                self._active = False
+                return False
+            if now - self._fsm_ts >= self.cfg['menu_open_timeout']:
+                print("[Safety] Меню не открылось — повтор ПКМ")
+                # force=True: повторный ПКМ не должен блокироваться safe_warp_cooldown
+                self._start_warp_to_safe(state, off_x=off_x, off_y=off_y, force=True)
+            return True
 
-        # 1. Обновить живой фокус (мёртв / вышел за радиус)
-        self._refresh_focus(state)
+        if self._fsm == 'WARP_CLICKED':
+            if getattr(state, 'is_warp', False) or getattr(state, 'is_establishing', False):
+                print(f"[Safety] Варп к '{self._current_spot}' подтверждён")
+                # Safety НЕ выключаем — пусть think() решает, устранена ли угроза.
+                self._fsm = 'IDLE'
+                return True
+            if now - self._fsm_ts >= self.cfg['warp_confirm_timeout']:
+                print("[Safety] Варп не подтвердился — повтор")
+                self._start_warp_to_safe(state, off_x=off_x, off_y=off_y, force=True)
+            return True
 
-        # 2. Диспетчер состояний
-        if self.step == 'IDLE':
-            self._enter_select(state, off_x, off_y, now)
-        elif self.step == 'SELECT':
-            self._tick_select(state, off_x, off_y, now)
-        elif self.step == 'ORBIT_WAIT':
-            self._tick_orbit_wait(state, off_x, off_y, now)
-        elif self.step == 'ORBIT_CLICK':
-            self._tick_orbit_click(state, off_x, off_y, now)
-        elif self.step == 'APPROACH':
-            self._tick_approach(state, off_x, off_y, now)
-        elif self.step == 'LOCK_CLICK':
-            self._tick_lock_click(state, off_x, off_y, now)
-        elif self.step == 'LOCK_WAIT':
-            self._tick_lock_wait(state, off_x, off_y, now)
-        elif self.step == 'ATTACK':
-            self._tick_attack(state, off_x, off_y, now)
-        elif self.step == 'FOCUS_DEAD':
-            self._tick_focus_dead(state, off_x, off_y, now)
-        else:
-            self._reset_to_idle()
-
-    def on_safety_recall(self, state) -> bool:
-        """Сбор дронов перед отходом. True — ещё в космосе."""
-        return self.drones.recall(state)
-
-    # ---------- FSM: состояния ----------
-
-    def _enter_select(self, state, off_x, off_y, now) -> None:
-        cand = self._lock_candidates(state)
-        if not cand:
-            return   # некого локнуть — ждём
-        first = cand[0]
-        coords = (float(first['x']), float(first['y']))
-        # Страховка: не кликать в (0, 0) — это левый верхний угол окна
-        if not (coords[0] or coords[1]):
-            return
-        self.focus = str(first['name'])
-        self.focus_class = first.get('npc_class')
-        self.focus_coords = coords
-        self._lock_attempts = 0
-        self._entry_attempts = 0
-        self.drones.on_focus_changed()
-        print(f"[Combat] Цель -> '{self.focus}' "
-              f"({self._fmt_dist(first.get('distance'))}, {self.focus_class or '?'})")
-        self._set_step('SELECT', now)
-        # Клик по строке овервью (выделение, откроет SelectedItemWnd)
-        self.input.click(int(self.focus_coords[0] + off_x),
-                         int(self.focus_coords[1] + off_y))
-
-    def _tick_select(self, state, off_x, off_y, now) -> None:
-        if now - self.step_ts < self.cfg['select_wait']:
-            return
-        self.input.w_down()
-        self._set_step('ORBIT_WAIT', now)
-
-    def _tick_orbit_wait(self, state, off_x, off_y, now) -> None:
-        if now - self.step_ts > self.cfg['orbit_hint_timeout']:
-            print(f"[Combat] '{self.focus}' — EVE не дала 'Click target' "
-                  f"за {self.cfg['orbit_hint_timeout']:.1f}с")
-            self.input.w_up()
-            self._ban_focus('orbit_hint_timeout')
-            return
-        if not getattr(state, 'orbit_hint_active', False):
-            return
-        self._set_step('ORBIT_CLICK', now)
-
-    def _tick_orbit_click(self, state, off_x, off_y, now) -> None:
-        """W зажат, EVE ждёт клик по цели. Клик = орбита.
-
-        После клика переходим в APPROACH — ждём сближения без лока.
-        """
-        if not self.focus_coords:
-            self.input.w_up()
-            self._reset_to_idle()
-            return
-        x = int(self.focus_coords[0] + off_x)
-        y = int(self.focus_coords[1] + off_y)
-        self.input.w_click(x, y, hold_after=self.cfg['orbit_w_hold_after_hint'])
-        print(f"[Combat] '{self.focus}' — W+клик (орбита), жду сближения")
-        self._set_step('APPROACH', now)
-
-    def _tick_approach(self, state, off_x, off_y, now) -> None:
-        """Орбита активна. Ждём, пока цель войдёт в зону лока.
-
-        Пока не в зоне:
-          * проверяем, что цель ещё в овервью (иначе FOCUS_DEAD);
-          * если прошло > approach_timeout — бан;
-          * каждые approach_check_interval секунд перепроверяем орбиту
-            (если слетела — снова W+клик);
-          * как только расстояние <= lock_range * ratio — переходим к LOCK_CLICK.
-
-        ВАЖНО: лок НЕ пытаемся, пока цель далеко. Иначе Ctrl+клик по
-        иконке вне зоны лока не сработает, FSM зацикливается на
-        LOCK_CLICK → LOCK_WAIT → LOCK_CLICK, и цель уходит в бан.
-        """
-        if not self.focus:
-            self._reset_to_idle()
-            return
-
-        # Таймаут сближения
-        if now - self.step_ts > self.cfg['approach_timeout']:
-            print(f"[Combat] '{self.focus}' — таймаут сближения "
-                  f"({self.cfg['approach_timeout']:.0f}с), бан")
-            self._ban_focus('approach_timeout')
-            return
-
-        # Ищем цель в овервью (по имени) — берём актуальную дистанцию и коорд.
-        entry = self._find_in_overview(state, self.focus)
-        if entry is None:
-            # Цель пропала из овервью. Два варианта:
-            #   * убита другим (наша пушка/дрон) — но мы не атаковали, так что
-            #     скорее ушла за пределы овервью — бан.
-            #   * улетела — бан.
-            print(f"[Combat] '{self.focus}' пропал из овервью — бан")
-            self._ban_focus('lost_in_overview')
-            return
-
-        dist = float(entry.get('distance') or 0.0)
-        # Обновляем координаты фокуса — цель движется.
-        ex, ey = entry.get('x'), entry.get('y')
-        if ex is not None and ey is not None:
-            self.focus_coords = (float(ex), float(ey))
-
-        # Зона лока: distance <= lock_range * ratio
-        limit_km = getattr(state, 'lock_range_km', None)
-        if not limit_km:
-            limit_km = self.cfg.get('default_lock_range_km', 70)
-        lock_zone_m = float(limit_km) * 1000.0 * \
-            float(self.cfg.get('approach_lock_range_ratio', 0.9))
-
-        # Дистанция из овервью может быть 0 (не распарсилась) — тогда
-        # считаем, что уже в зоне и пробуем лочить.
-        in_zone = (dist <= 0) or (dist <= lock_zone_m)
-
-        if in_zone:
-            print(f"[Combat] '{self.focus}' в зоне лока "
-                  f"({self._fmt_dist(dist)} <= {lock_zone_m/1000:.0f} km) — лок")
-            self._set_step('LOCK_CLICK', now)
-            return
-
-        # Орбита слетела? Проверяем по state.is_orbiting (общий статус корабля).
-        if not getattr(state, 'is_orbiting', False):
-            now_check = now
-            if now_check - self._last_orbit_check_ts >= \
-                    self.cfg.get('orbit_recheck_cooldown', 6.0):
-                self._last_orbit_check_ts = now_check
-                if self.focus_coords:
-                    x = int(self.focus_coords[0] + off_x)
-                    y = int(self.focus_coords[1] + off_y)
-                    print(f"[Combat] '{self.focus}' — орбита слетела, повтор W+клик")
-                    self.input.w_click(x, y)
-        else:
-            self._last_orbit_check_ts = now
-
-    def _tick_lock_click(self, state, off_x, off_y, now) -> None:
-        if not self.focus_coords:
-            self._reset_to_idle()
-            return
-        x = int(self.focus_coords[0] + off_x)
-        y = int(self.focus_coords[1] + off_y)
-        self.input.ctrl_click(x, y)
-        print(f"[Combat] '{self.focus}' — Ctrl+клик (лок)")
-        self._lock_attempts += 1
-        self._set_step('LOCK_WAIT', now)
-
-    def _tick_lock_wait(self, state, off_x, off_y, now) -> None:
-        # Успех: цель появилась в state.targets
-        if self._focus_in_targets(state):
-            print(f"[Combat] '{self.focus}' — в локах")
-            self._set_step('ATTACK', now)
-            return
-        # Таймаут
-        if now - self.step_ts >= self.cfg['lock_timeout']:
-            if self._lock_attempts >= self.cfg['lock_max_attempts']:
-                print(f"[Combat] '{self.focus}' не локается "
-                      f"({self._lock_attempts} попыток) — бан 60с")
-                self._ban_focus('lock_failed')
-                return
-            # Цель ушла из зоны лока между попытками? Проверим — если да,
-            # возвращаемся в APPROACH, а не долбим Ctrl+клик вслепую.
-            entry = self._find_in_overview(state, self.focus)
-            if entry is not None:
-                dist = float(entry.get('distance') or 0.0)
-                limit_km = getattr(state, 'lock_range_km', None)
-                if not limit_km:
-                    limit_km = self.cfg.get('default_lock_range_km', 70)
-                lock_zone_m = float(limit_km) * 1000.0 * \
-                    float(self.cfg.get('approach_lock_range_ratio', 0.9))
-                if dist > 0 and dist > lock_zone_m:
-                    print(f"[Combat] '{self.focus}' вышел из зоны лока "
-                          f"({self._fmt_dist(dist)}) — возврат в APPROACH")
-                    self._set_step('APPROACH', now)
-                    return
-            print(f"[Combat] '{self.focus}' не в локах — повтор "
-                  f"#{self._lock_attempts + 1}")
-            self._set_step('LOCK_CLICK', now)
-
-    def _tick_attack(self, state, off_x, off_y, now) -> None:
-        # 1. Активировать фокус (клик по строке лока, если он не активен)
-        if not self._ensure_active(state, off_x, off_y):
-            return   # кликнули — ждём следующего тика
-        # 2. Дроны — выпуск/атака/recall
-        if self.drones.update_hp_guard(state):
-            self.drones.recall(state)
-            return
-        self.drones.ensure_attack(state, self.focus)
-        # 3. Пушки
-        self._press_guns(state, now)
-        # 4. До-захват новых целей до lock_batch_size
-        self._maintain_locks(state, off_x, off_y, now)
-        # 5. Фокус мёртв?
-        if not self._focus_in_targets(state):
-            self._set_step('FOCUS_DEAD', now)
-
-    def _tick_focus_dead(self, state, off_x, off_y, now) -> None:
-        print(f"[Combat] Фокус '{self.focus}' убит")
-        self.drones.on_focus_changed()
-        self.focus = None
-        self.focus_class = None
-        self.focus_coords = None
-        if now - self._focus_switch_ts < self.cfg['focus_switch_cooldown']:
-            return
-        self._focus_switch_ts = now
-        self._reset_to_idle()
-
+        # IDLE: держим Safety активным, пока угроза не уйдёт (см. think)
+        return True
 
     # ---------- внутреннее ----------
 
@@ -1491,10 +1288,10 @@ class SafetyController:
 
     def _start_warp_to_safe(self, state, off_x: int = 0, off_y: int = 0,
                             force: bool = False) -> None:
-        """ПКМ по споту-букмарку → меню. off_x/off_y — экранное смещение окна.
+        """ПКМ по споту-букмарку → меню.
 
         force=True — игнорировать safe_warp_cooldown (нужно при повторе
-        в MENU_WAIT, когда меню не открылось).
+        в MENU_WAIT/WARP_CLICKED, когда меню не открылось или варп не пошёл).
         """
         if not getattr(state, 'bookmarks', None):
             if not self._warned_no_bookmarks:
@@ -1712,7 +1509,7 @@ class MissionFSM:
 # =============================================================================
 
 class CombatFSM:
-    """SELECT → ORBIT_WAIT → ORBIT_CLICK → LOCK_CLICK → LOCK_WAIT → ATTACK → FOCUS_DEAD → IDLE.
+    """SELECT → ORBIT_WAIT → ORBIT_CLICK → APPROACH → LOCK_CLICK → LOCK_WAIT → ATTACK → FOCUS_DEAD → IDLE.
 
     Источники истины:
       * self.focus — имя текущей цели фокуса (единственное место выбора);
@@ -1720,8 +1517,10 @@ class CombatFSM:
       * self.step — состояние FSM;
       * self.step_ts — момент входа в состояние.
 
-    Пушки стреляют ТОЛЬКО в ATTACK и ТОЛЬКО когда active_target == focus.
-    Дроны — подсостояние ATTACK (DroneController.ensure_attack).
+    После включения орбиты FSM уходит в APPROACH и ЖДЁТ, пока цель
+    войдёт в зону лока (distance <= lock_range * approach_lock_range_ratio).
+    Только тогда делает Ctrl+клик. Если лок не удался, а цель всё ещё
+    в зоне — повтор; если вышла из зоны — возврат в APPROACH.
     """
 
     # --- длины/пороги ---
@@ -1809,6 +1608,8 @@ class CombatFSM:
             self._tick_orbit_wait(state, off_x, off_y, now)
         elif self.step == 'ORBIT_CLICK':
             self._tick_orbit_click(state, off_x, off_y, now)
+        elif self.step == 'APPROACH':
+            self._tick_approach(state, off_x, off_y, now)
         elif self.step == 'LOCK_CLICK':
             self._tick_lock_click(state, off_x, off_y, now)
         elif self.step == 'LOCK_WAIT':
@@ -1866,7 +1667,10 @@ class CombatFSM:
         self._set_step('ORBIT_CLICK', now)
 
     def _tick_orbit_click(self, state, off_x, off_y, now) -> None:
-        """W зажат, EVE ждёт клик по цели. Клик = орбита."""
+        """W зажат, EVE ждёт клик по цели. Клик = орбита.
+
+        После клика переходим в APPROACH — ждём сближения без лока.
+        """
         if not self.focus_coords:
             self.input.w_up()
             self._reset_to_idle()
@@ -1874,8 +1678,76 @@ class CombatFSM:
         x = int(self.focus_coords[0] + off_x)
         y = int(self.focus_coords[1] + off_y)
         self.input.w_click(x, y, hold_after=self.cfg['orbit_w_hold_after_hint'])
-        print(f"[Combat] '{self.focus}' — W+клик (орбита)")
-        self._set_step('LOCK_CLICK', now)
+        print(f"[Combat] '{self.focus}' — W+клик (орбита), жду сближения")
+        self._set_step('APPROACH', now)
+
+    def _tick_approach(self, state, off_x, off_y, now) -> None:
+        """Орбита активна. Ждём, пока цель войдёт в зону лока.
+
+        Пока не в зоне:
+          * проверяем, что цель ещё в овервью (иначе FOCUS_DEAD);
+          * если прошло > approach_timeout — бан;
+          * каждые orbit_recheck_cooldown секунд перепроверяем орбиту
+            (если слетела — снова W+клик);
+          * как только расстояние <= lock_range * ratio — переходим к LOCK_CLICK.
+
+        ВАЖНО: лок НЕ пытаемся, пока цель далеко. Иначе Ctrl+клик по
+        иконке вне зоны лока не сработает, FSM зацикливается на
+        LOCK_CLICK → LOCK_WAIT → LOCK_CLICK, и цель уходит в бан.
+        """
+        if not self.focus:
+            self._reset_to_idle()
+            return
+
+        # Таймаут сближения
+        if now - self.step_ts > self.cfg['approach_timeout']:
+            print(f"[Combat] '{self.focus}' — таймаут сближения "
+                  f"({self.cfg['approach_timeout']:.0f}с), бан")
+            self._ban_focus('approach_timeout')
+            return
+
+        # Ищем цель в овервью (по имени) — берём актуальную дистанцию и коорд.
+        entry = self._find_in_overview(state, self.focus)
+        if entry is None:
+            print(f"[Combat] '{self.focus}' пропал из овервью — бан")
+            self._ban_focus('lost_in_overview')
+            return
+
+        dist = float(entry.get('distance') or 0.0)
+        # Обновляем координаты фокуса — цель движется.
+        ex, ey = entry.get('x'), entry.get('y')
+        if ex is not None and ey is not None:
+            self.focus_coords = (float(ex), float(ey))
+
+        # Зона лока: distance <= lock_range * ratio
+        limit_km = getattr(state, 'lock_range_km', None)
+        if not limit_km:
+            limit_km = self.cfg.get('default_lock_range_km', 70)
+        lock_zone_m = float(limit_km) * 1000.0 * \
+            float(self.cfg.get('approach_lock_range_ratio', 0.9))
+
+        # Дистанция из овервью может быть 0 (не распарсилась) — тогда
+        # считаем, что уже в зоне и пробуем лочить.
+        in_zone = (dist <= 0) or (dist <= lock_zone_m)
+
+        if in_zone:
+            print(f"[Combat] '{self.focus}' в зоне лока "
+                  f"({self._fmt_dist(dist)} <= {lock_zone_m/1000:.0f} km) — лок")
+            self._set_step('LOCK_CLICK', now)
+            return
+
+        # Орбита слетела? Проверяем по state.is_orbiting.
+        if not getattr(state, 'is_orbiting', False):
+            if now - self._last_orbit_check_ts >= \
+                    self.cfg.get('orbit_recheck_cooldown', 6.0):
+                self._last_orbit_check_ts = now
+                if self.focus_coords:
+                    x = int(self.focus_coords[0] + off_x)
+                    y = int(self.focus_coords[1] + off_y)
+                    print(f"[Combat] '{self.focus}' — орбита слетела, повтор W+клик")
+                    self.input.w_click(x, y)
+        else:
+            self._last_orbit_check_ts = now
 
     def _tick_lock_click(self, state, off_x, off_y, now) -> None:
         if not self.focus_coords:
@@ -1901,6 +1773,21 @@ class CombatFSM:
                       f"({self._lock_attempts} попыток) — бан 60с")
                 self._ban_focus('lock_failed')
                 return
+            # Цель ушла из зоны лока? Возврат в APPROACH, чтобы не долбить
+            # Ctrl+клик вслепую.
+            entry = self._find_in_overview(state, self.focus)
+            if entry is not None:
+                dist = float(entry.get('distance') or 0.0)
+                limit_km = getattr(state, 'lock_range_km', None)
+                if not limit_km:
+                    limit_km = self.cfg.get('default_lock_range_km', 70)
+                lock_zone_m = float(limit_km) * 1000.0 * \
+                    float(self.cfg.get('approach_lock_range_ratio', 0.9))
+                if dist > 0 and dist > lock_zone_m:
+                    print(f"[Combat] '{self.focus}' вышел из зоны лока "
+                          f"({self._fmt_dist(dist)}) — возврат в APPROACH")
+                    self._set_step('APPROACH', now)
+                    return
             print(f"[Combat] '{self.focus}' не в локах — повтор "
                   f"#{self._lock_attempts + 1}")
             self._set_step('LOCK_CLICK', now)
@@ -1956,11 +1843,7 @@ class CombatFSM:
         self._reset_to_idle()
 
     def _find_in_overview(self, state, name: str) -> Optional[Dict]:
-        """Найти запись в overview_entries по нормализованному имени.
-
-        Возвращает dict записи (с полями name, x, y, distance, npc_class)
-        или None, если цели в овервью нет.
-        """
+        """Найти запись в overview_entries по нормализованному имени."""
         if not name:
             return None
         fn = norm_name(name)
@@ -1969,12 +1852,21 @@ class CombatFSM:
                 return e
         return None
 
-
-        
     def _refresh_focus(self, state) -> None:
-        """Сбросить фокус, если он вышел за радиус лока."""
+        """Сбросить фокус, если он мёртв или ушёл слишком далеко.
+
+        ВАЖНО: в состояниях SELECT / ORBIT_WAIT / ORBIT_CLICK / APPROACH
+        мы как раз сближаемся с целью. Сбрасывать фокус по дистанции в
+        этих состояниях нельзя — иначе цель вне lock_range сбрасывается
+        до того, как FSM успеет её догнать.
+
+        В ATTACK / LOCK_WAIT / LOCK_CLICK — сбрасываем, если цель ушла
+        за lock_range * MAX_FOCUS_DIST_RATIO.
+        """
         if not self.focus:
             return
+        if self.step in ('SELECT', 'ORBIT_WAIT', 'ORBIT_CLICK', 'APPROACH'):
+            return  # сближаемся — не трогаем
         limit_km = getattr(state, 'lock_range_km', None)
         if not limit_km:
             return
@@ -1987,7 +1879,7 @@ class CombatFSM:
                           f"{limit_km} км — сброс")
                     self._ban_focus('out_of_range')
                 return
-
+            
     def _focus_in_targets(self, state) -> bool:
         if not self.focus:
             return False
@@ -2049,11 +1941,8 @@ class CombatFSM:
     def _target_under_fire(self, state) -> bool:
         """True = цель уже под нашим огнём (не жать F1 повторно).
 
-        Если цель НЕ найдена в овервью (пропала из списка, но может быть
-        в локах) — считаем «под огнём», чтобы не выключить оружие
-        повторным нажатием F1 (в EVE это тоггл).
-        Дополнительно проверяем active_target.targeted_by_me — парсер
-        может не отдавать overview_entries во время боя.
+        Если цель НЕ найдена в овервью — считаем «под огнём», чтобы не
+        выключить оружие повторным F1 (в EVE это тоггл).
         """
         if not self.focus:
             return True
@@ -2066,9 +1955,7 @@ class CombatFSM:
                     return True
                 break
         if not found:
-            # Цель пропала из овервью — не выключаем оружие повторным F1
             return True
-        # Дополнительный источник: активная цель в state.active_target
         active = getattr(state, 'active_target', None) or {}
         if norm_name(active.get('name')) == fn and active.get('targeted_by_me'):
             return True
@@ -2080,9 +1967,13 @@ class CombatFSM:
         if len(locked) >= max_locks:
             return
         need = max_locks - len(locked)
-        cand = self._lock_candidates(state, exclude_locked=True)
+        # Для до-захвата фильтр по lock_range ОБЯЗАТЕЛЕН: Ctrl+клик по
+        # цели вне зоны лока всё равно не сработает.
+        cand = self._lock_candidates(state, exclude_locked=True,
+                                     apply_range_filter=True)
         if not cand:
             return
+        
         if now - self._last_lockup_ts < self.cfg['lockup_cooldown']:
             return
         self._last_lockup_ts = now
@@ -2094,7 +1985,18 @@ class CombatFSM:
             self.input.ctrl_click(x, y)
             time.sleep(self.cfg['lock_batch_delay'])
 
-    def _lock_candidates(self, state, exclude_locked: bool = False) -> List[Dict]:
+    def _lock_candidates(self, state, exclude_locked: bool = False,
+                         apply_range_filter: bool = False) -> List[Dict]:
+        """Кандидаты на захват.
+
+        apply_range_filter=False (по умолчанию) — отдаём ВСЕ боевые цели
+        из овервью, включая дальние. Нужно для выбора ФОКУСА: чтобы
+        APPROACH мог сблизиться с целью за пределами lock_range.
+
+        apply_range_filter=True — фильтруем по lock_range * 0.95.
+        Нужно для ДО-захвата (_maintain_locks): захватывать за пределами
+        лока всё равно не получится, Ctrl+клик не сработает.
+        """
         now = time.time()
         skip = {n.lower() for n, ts in self._skip_coords.items()
                 if now - ts < 60.0}
@@ -2127,7 +2029,7 @@ class CombatFSM:
             if x is None or y is None:
                 continue
             dist = float(e.get('distance') or 0.0)
-            if limit_m and dist > 0 and dist > limit_m:
+            if apply_range_filter and limit_m and dist > 0 and dist > limit_m:
                 continue
             item = {
                 'name': name, 'x': float(x), 'y': float(y),
@@ -2150,7 +2052,7 @@ class CombatFSM:
             random.shuffle(after)
             return frig + after
         return frig + bs + rest
-
+    
     def _has_hostile_npcs(self, state) -> bool:
         env_types = ('station', 'stargate', 'planet', 'asteroid',
                      'citadel', 'wormhole')
@@ -2170,7 +2072,7 @@ class CombatFSM:
         except (TypeError, ValueError):
             return "?"
         return f"{m:.0f} m" if m < 1000 else f"{m / 1000:.1f} km"
-
+    
 # =============================================================================
 # EVE BOT — тонкий фасад
 # =============================================================================
