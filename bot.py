@@ -754,6 +754,7 @@ DEFAULT_CFG: Dict[str, Any] = {
     'key_repress_cooldown': 6.0,
     'module_click_cooldown': 3.0,
     'slot_hotkey_offset': 0,
+
     # --- дроны ---
     'drone_relaunch_delay': 3.0,
     # Порог щита дрона для recall: 0.5 = 50%. Смотрим ТОЛЬКО щит.
@@ -761,10 +762,21 @@ DEFAULT_CFG: Dict[str, Any] = {
     # Первые N секунд после Shift+F дрон не считается «под атакой»:
     # пока летит к цели, щит мог быть неполным ещё до выпуска.
     'drone_hp_grace_sec': 8.0,
+    # Минимальный интервал между нажатиями Shift+F. Дампер отстаёт:
+    # in_bay уменьшается мгновенно, in_space приходит с задержкой 2-4 сек,
+    # и без кулдауна бот жмёт Shift+F несколько раз подряд, считая что
+    # in_space==0. Ставим 5 секунд — реального выпуска хватает.
+    'drone_launch_cooldown': 5.0,
+    # Подтверждение потери дронов: сколько секунд ждать, прежде чем
+    # записать «-N дронов» (за это время дрон должен долететь из ангара
+    # в space, и total восстановится, если потери не было).
+    'drone_loss_confirm_sec': 8.0,
     'drone_f_repress_cooldown': 6.0,
     'drone_release_wait': 8.0,
     'min_drones': 1,
     'drone_hp_check_interval': 2.0,
+
+
     # --- миссия: варп к аномалиям ---
     'anomaly_group_filter': 'combat',
     'anomaly_revisit_cooldown': 600,
@@ -841,9 +853,19 @@ class DroneController:
         in_bay = int(getattr(state, 'drones_in_bay', 0) or 0)
         in_space = int(getattr(state, 'drones_in_space', 0) or 0)
 
-        # 1) Выпуск
+        # 1) Выпуск.
+        #
+        # ВАЖНО: дампер отстаёт — in_bay уменьшается сразу, как только дрон
+        # покидает ангар, а in_space приходит только через 2-4 сек, когда
+        # EVE отрисует дрона в списке "Drones in Space". Без длинного кулдауна
+        # бот между этими событиями видит (in_bay>0, in_space==0) и жмёт
+        # Shift+F повторно — получается спам выпуска.
+        #
+        # Дополнительно: если в дампе уже in_space > 0 (хоть один дрон
+        # отрисован), повтор не нужен. Условие `in_space == 0` оставляем,
+        # но добавляем жёсткий кулдаун из cfg['drone_launch_cooldown'].
         if in_bay > 0 and in_space == 0:
-            if now - self._last_launch_ts < 2.0:
+            if now - self._last_launch_ts < self.cfg.get('drone_launch_cooldown', 5.0):
                 return
             self._last_launch_ts = now
             print(f"[Drone] Выпуск: {in_bay} в ангаре (Shift+F)")
@@ -869,6 +891,7 @@ class DroneController:
                 print(f"[Drone] Дроны не атакуют — повтор F")
                 self.input.press_physical('f')
                 self._last_f_ts = now
+
 
     def recall(self, state) -> bool:
         """Shift+R. True — если дроны ещё в космосе (или в процессе возврата)."""
@@ -1624,27 +1647,60 @@ class CombatFSM:
     # ---------- FSM: состояния ----------
 
     def _enter_select(self, state, off_x, off_y, now) -> None:
-        cand = self._lock_candidates(state)
-        if not cand:
-            return   # некого локнуть — ждём
-        first = cand[0]
-        coords = (float(first['x']), float(first['y']))
-        # Страховка: не кликать в (0, 0) — это левый верхний угол окна
-        if not (coords[0] or coords[1]):
+        existing = list(state.targets or [])
+        if existing:
+            first = existing[0]
+            self.focus = str(first.get('name') or '')
+            self.focus_class = None
+            self.focus_coords = None
+            self._lock_attempts = 0
+            self._entry_attempts = 0
+            self.drones.on_focus_changed()
+            print(f"[Combat] Цель уже захвачена: '{self.focus}' "
+                  f"({self._fmt_dist(first.get('distance'))}) — иду в ATTACK")
+            self._set_step('ATTACK', now)
             return
-        self.focus = str(first['name'])
-        self.focus_class = first.get('npc_class')
-        self.focus_coords = coords
-        self._lock_attempts = 0
-        self._entry_attempts = 0
-        self.drones.on_focus_changed()
-        print(f"[Combat] Цель -> '{self.focus}' "
-              f"({self._fmt_dist(first.get('distance'))}, {self.focus_class or '?'})")
-        self._set_step('SELECT', now)
-        # Клик по строке овервью (выделение, откроет SelectedItemWnd)
-        self.input.click(int(self.focus_coords[0] + off_x),
-                         int(self.focus_coords[1] + off_y))
 
+        cand = self._lock_candidates(state)
+        if cand:
+            first = cand[0]
+            coords = (float(first['x']), float(first['y']))
+            if not (coords[0] or coords[1]):
+                return
+            self.focus = str(first['name'])
+            self.focus_class = first.get('npc_class')
+            self.focus_coords = coords
+            self._lock_attempts = 0
+            self._entry_attempts = 0
+            self.drones.on_focus_changed()
+            print(f"[Combat] Цель -> '{self.focus}' "
+                  f"({self._fmt_dist(first.get('distance'))}, {self.focus_class or '?'})")
+            self._set_step('SELECT', now)
+            self.input.click(int(self.focus_coords[0] + off_x),
+                             int(self.focus_coords[1] + off_y))
+            return
+
+        # Fallback: овервью пуст ИЛИ все его записи отфильтрованы,
+        # но NPC в brackets (SpaceObjectIcon) — state.npc_all.
+        # Берём первую иконку и сразу идём в LOCK_CLICK: Ctrl+клик
+        # по иконке EVE сам залочит цель, а со следующего тика
+        # state.targets заполнится настоящим именем.
+        npc_icons = list(getattr(state, 'npc_all', None) or [])
+        if npc_icons:
+            ix, iy = npc_icons[0]
+            if not (ix or iy):
+                return
+            self.focus = "_bracket_0"
+            self.focus_class = None
+            self.focus_coords = (float(ix), float(iy))
+            self._lock_attempts = 0
+            self._entry_attempts = 0
+            self.drones.on_focus_changed()
+            print(f"[Combat] Овервью пуст, но NPC в brackets: "
+                  f"клик по иконке @ ({int(ix)},{int(iy)}) — лок")
+            self._set_step('LOCK_CLICK', now)
+            return
+               
     def _tick_select(self, state, off_x, off_y, now) -> None:
         if now - self.step_ts < self.cfg['select_wait']:
             return
@@ -1762,7 +1818,26 @@ class CombatFSM:
         self._set_step('LOCK_WAIT', now)
 
     def _tick_lock_wait(self, state, off_x, off_y, now) -> None:
-        # Успех: цель появилась в state.targets
+        # Особый случай: фокус из brackets (_bracket_N) — имени у него
+        # нет, ждём появления ЛЮБОЙ цели в state.targets.
+        if isinstance(self.focus, str) and self.focus.startswith('_bracket_'):
+            targets = list(state.targets or [])
+            if targets:
+                real = targets[0]
+                real_name = str(real.get('name') or '')
+                if real_name:
+                    print(f"[Combat] Лок по brackets: '{real_name}' "
+                          f"({self._fmt_dist(real.get('distance'))})")
+                    self.focus = real_name
+                    self.focus_class = None
+                    self.focus_coords = (float(real.get('x') or 0),
+                                         float(real.get('y') or 0))
+                    self._lock_attempts = 0
+                    self.drones.on_focus_changed()
+                    self._set_step('ATTACK', now)
+                    return
+
+        # Успех: цель появилась в state.targets (обычный путь)
         if self._focus_in_targets(state):
             print(f"[Combat] '{self.focus}' — в локах")
             self._set_step('ATTACK', now)
@@ -1774,6 +1849,7 @@ class CombatFSM:
                       f"({self._lock_attempts} попыток) — бан 60с")
                 self._ban_focus('lock_failed')
                 return
+            
             # Цель ушла из зоны лока? Возврат в APPROACH, чтобы не долбить
             # Ctrl+клик вслепую.
             entry = self._find_in_overview(state, self.focus)
@@ -1989,22 +2065,19 @@ class CombatFSM:
     def _lock_candidates(self, state, exclude_locked: bool = False,
                          apply_range_filter: bool = False) -> List[Dict]:
         """Кандидаты на захват.
-
-        apply_range_filter=False (по умолчанию) — отдаём ВСЕ боевые цели
-        из овервью, включая дальние. Нужно для выбора ФОКУСА: чтобы
-        APPROACH мог сблизиться с целью за пределами lock_range.
-
-        apply_range_filter=True — фильтруем по lock_range * 0.95.
-        Нужно для ДО-захвата (_maintain_locks): захватывать за пределами
-        лока всё равно не получится, Ctrl+клик не сработает.
+        ... (докстринг оставить)
         """
         now = time.time()
-        skip = {n.lower() for n, ts in self._skip_coords.items()
-                if now - ts < 60.0}
+        ov = list(getattr(state, 'overview_entries', None) or [])
+        print(f"[Combat] _lock_candidates: ov={len(ov)} "
+              f"exclude_locked={exclude_locked} "
+              f"apply_range_filter={apply_range_filter}")
+
         limit_km = getattr(state, 'lock_range_km', None)
         if not limit_km:
             limit_km = self.cfg.get('default_lock_range_km', 70)
         limit_m = float(limit_km) * 1000.0 * 0.95
+        in_zone_m = float(limit_km) * 1000.0
 
         locked_names = set()
         if exclude_locked:
@@ -2014,29 +2087,41 @@ class CombatFSM:
         env_types = ('station', 'stargate', 'planet', 'asteroid',
                      'citadel', 'wormhole')
         frig, bs, rest = [], [], []
-        for e in (getattr(state, 'overview_entries', None) or []):
+        for e in ov:
             name = str(e.get('name') or '').strip()
             if not name:
+                print(f"[Combat]   skip: no name; e={e}")
                 continue
             if str(e.get('type') or '').lower() in env_types:
+                print(f"[Combat]   skip: env type {name} type={e.get('type')}")
                 continue
-            if name.lower() in skip:
+
+            dist = float(e.get('distance') or 0.0)
+            banned = name.lower() in {n.lower() for n, ts in self._skip_coords.items()
+                                       if now - ts < 60.0}
+            if banned and not (dist > 0 and dist <= in_zone_m):
+                print(f"[Combat]   skip: banned {name} d={dist}")
                 continue
+
             if exclude_locked and norm_name(name) in locked_names:
+                print(f"[Combat]   skip: already locked {name}")
                 continue
             if e.get('targeted_by_me'):
+                print(f"[Combat]   skip: targeted_by_me {name}")
                 continue
             x, y = e.get('x'), e.get('y')
             if x is None or y is None:
+                print(f"[Combat]   skip: no coords {name} x={x} y={y}")
                 continue
-            dist = float(e.get('distance') or 0.0)
             if apply_range_filter and limit_m and dist > 0 and dist > limit_m:
+                print(f"[Combat]   skip: out of range {name} d={dist} > {limit_m}")
                 continue
             item = {
                 'name': name, 'x': float(x), 'y': float(y),
                 'distance': dist, 'npc_class': e.get('npc_class'),
             }
             cls = e.get('npc_class')
+            print(f"[Combat]   ok: {name} d={dist} cls={cls} x={x} y={y}")
             if cls == 'FRIGATE':
                 frig.append(item)
             elif cls == 'BATTLESHIP':
@@ -2048,12 +2133,16 @@ class CombatFSM:
         bs.sort(key=lambda c: c['distance'])
         rest.sort(key=lambda c: c['distance'])
 
+        total = len(frig) + len(bs) + len(rest)
+        print(f"[Combat] _lock_candidates return: fr={len(frig)} bs={len(bs)} "
+              f"rest={len(rest)} total={total}")
+
         if self.cfg.get('post_frigate_priority') == 'random':
             after = bs + rest
             random.shuffle(after)
             return frig + after
         return frig + bs + rest
-    
+
     def _has_hostile_npcs(self, state) -> bool:
         env_types = ('station', 'stargate', 'planet', 'asteroid',
                      'citadel', 'wormhole')
@@ -2131,6 +2220,9 @@ class EveBot:
         self._had_npcs = False
         self._drone_baseline: Optional[int] = None
         self._low_drones_alerted = False
+        # Для отложенного учёта потерь дронов (дампер отстаёт).
+        self._drone_loss_start_ts = 0.0
+        self._drone_loss_min = 0
 
         # --- state (для совместимости; main.py может читать) ---
         self.current_state = None
@@ -2169,6 +2261,8 @@ class EveBot:
         self._had_npcs = False
         self._drone_baseline = None
         self._low_drones_alerted = False
+        self._drone_loss_start_ts = 0.0
+        self._drone_loss_min = 0
 
         self.safety.clear()
         self.mission.reset()
@@ -2550,25 +2644,61 @@ class EveBot:
         self._prev_locked_count = cur
 
     def _track_drones(self, state) -> None:
+        """Учёт потерь дронов с задержкой.
+
+        Между «дрон ушёл из ангара» и «дрон появился в space» проходит
+        2-4 сек (дампер отстаёт). В это окно total временно падает, и
+        мы НЕ должны сразу писать «потеря дронов».
+
+        Решение: если total стал меньше baseline — не увеличиваем
+        счётчик сразу. Ждём drone_loss_confirm_sec секунд: если за это
+        время total не восстановился — тогда фиксируем потерю.
+        """
+        now = time.monotonic()
         total = int(getattr(state, 'drones_in_bay', 0) or 0) + \
                 int(getattr(state, 'drones_in_space', 0) or 0)
         if total <= 0:
             return
+
+        # Новая база: либо первый тик, либо восстановление total
         if self._drone_baseline is None:
             self._drone_baseline = total
+            self._drone_loss_start_ts = 0.0
+            self._drone_loss_min = total
             return
-        if total < self._drone_baseline:
-            lost = self._drone_baseline - total
+
+        if total >= self._drone_baseline:
+            # Всё в порядке (или дроны вернулись) — сбрасываем таймер потери
             self._drone_baseline = total
-            self.stats['drones_lost'] += lost
-            print(f"[Stats] Потеря дронов: -{lost} (всего {self.stats['drones_lost']})")
-        elif total > self._drone_baseline:
-            self._drone_baseline = total
+            self._drone_loss_start_ts = 0.0
+            self._drone_loss_min = total
             self._low_drones_alerted = False
+        else:
+            # total меньше baseline. Ждём подтверждения.
+            if self._drone_loss_start_ts == 0.0:
+                # Первый тик с уменьшением — запускаем таймер
+                self._drone_loss_start_ts = now
+                self._drone_loss_min = total
+            else:
+                # Обновляем минимум (может упасть ещё ниже)
+                self._drone_loss_min = min(self._drone_loss_min, total)
+
+            # Подтверждение: прошло > drone_loss_confirm_sec секунд,
+            # и total так и не вернулся.
+            confirm_sec = self.cfg.get('drone_loss_confirm_sec', 8.0)
+            if now - self._drone_loss_start_ts >= confirm_sec:
+                lost = self._drone_baseline - self._drone_loss_min
+                if lost > 0:
+                    self._drone_baseline = total
+                    self.stats['drones_lost'] += lost
+                    print(f"[Stats] Потеря дронов: -{lost} "
+                          f"(всего {self.stats['drones_lost']})")
+                self._drone_loss_start_ts = 0.0
+                self._drone_loss_min = total
+
         if total < self.cfg['min_drones'] and not self._low_drones_alerted:
             self._low_drones_alerted = True
             print(f"[Stats] МАЛО ДРОНОВ: {total} — нужен док")
-
 
 # =============================================================================
 # ENTRY POINT (для ручной проверки без GUI)
