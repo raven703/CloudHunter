@@ -871,13 +871,12 @@ def parse_drones(root: Dict) -> Dict[str, Any]:
                 result['in_space'] = int(nums[0])
             if len(nums) > 1:
                 result['max'] = int(nums[1])
-        # Полоска урона дрона (droneGaugeBarDmg): ширина > 0 => дрон под атакой
-        if 'droneGaugeBarDmg' in str(ei.get('_name', '')):
-            w = ei.get('_displayWidth', ei.get('_width', 0))
-            if isinstance(w, dict):
-                w = w.get('int_low32', 0)
-            if isinstance(w, (int, float)) and w > 2:
-                result['under_attack'] = True
+        # Флаг under_attack НЕ ставим здесь. Раньше мы смотрели на любую
+        # 'droneGaugeBarDmg' с width > 2 — но это полоса armor (в EVE armor
+        # не регенерирует, полоса повреждения armor почти всегда ненулевая),
+        # а не щита. Из-за этого state.drones_under_attack был True всегда,
+        # даже при 100% щите. Актуальный under_attack выставляется ниже,
+        # по shield_pct из parse_drone_entry.
 
         for child in node.get('children', []) or []:
             walk(child)
@@ -914,12 +913,18 @@ def parse_drones(root: Dict) -> Dict[str, Any]:
                 result['fighting'] = True
             elif st == 'RETURNING':
                 result['returning'] = True
+            # under_attack = хотя бы у одного дрона щит < 99% (реальный
+            # урон по щиту). armor/structure в подсчёт не идут.
+            sh = parsed.get('shield_pct')
+            if isinstance(sh, (int, float)) and sh < 99.0:
+                result['under_attack'] = True
 
     # Нет дронов в космосе => активных статусов нет (все в ангаре)
     if not result['entries'] and result['in_space'] == 0:
         result['idle'] = False
         result['fighting'] = False
         result['returning'] = False
+        result['under_attack'] = False
 
     return result
 

@@ -744,7 +744,7 @@ DEFAULT_CFG: Dict[str, Any] = {
     # Как только цель в зоне лока (distance <= lock_range * ratio) — пробуем лок.
     'approach_lock_range_ratio': 0.9,
     # Максимум ожидания сближения, сек. Не успели — бан цели.
-    'approach_timeout': 45.0,
+    'approach_timeout': 30.0,
     # Проверять каждые N сек (не спамить тяжёлыми проверками).
     'approach_check_interval': 2.0,
 
@@ -1680,29 +1680,22 @@ class CombatFSM:
     def _tick_approach(self, state, off_x, off_y, now) -> None:
         """Орбита активна. Ждём, пока цель войдёт в зону лока.
 
-        Пока не в зоне:
-          * проверяем, что цель ещё в овервью (иначе FOCUS_DEAD);
-          * если прошло > approach_timeout — бан;
-          * каждые orbit_recheck_cooldown секунд перепроверяем орбиту
-            (если слетела — снова W+клик);
-          * как только расстояние <= lock_range * ratio — переходим к LOCK_CLICK.
-
-        ВАЖНО: лок НЕ пытаемся, пока цель далеко. Иначе Ctrl+клик по
-        иконке вне зоны лока не сработает, FSM зацикливается на
-        LOCK_CLICK → LOCK_WAIT → LOCK_CLICK, и цель уходит в бан.
+        Логика:
+          * Сначала находим цель в овервью (актуальная дистанция и коорд.)
+            и считаем зону лока. Если цель УЖЕ в зоне — сразу LOCK_CLICK,
+            БЕЗ проверки таймаута (таймаут неактуален, если цель достигнута).
+          * Таймаут: если цель НЕ в зоне и прошло > approach_timeout —
+            баним цель (кроме случая, когда она всё-таки успела войти
+            в зону — тогда лок, а не бан).
+          * Пока не в зоне и таймаут не вышел — перепроверяем орбиту:
+            если слетела, повторяем W+клик.
         """
         if not self.focus:
             self._reset_to_idle()
             return
 
-        # Таймаут сближения
-        if now - self.step_ts > self.cfg['approach_timeout']:
-            print(f"[Combat] '{self.focus}' — таймаут сближения "
-                  f"({self.cfg['approach_timeout']:.0f}с), бан")
-            self._ban_focus('approach_timeout')
-            return
-
-        # Ищем цель в овервью (по имени) — берём актуальную дистанцию и коорд.
+        # 1. Ищем цель в овервью (по имени) — нужна до проверки таймаута,
+        #    чтобы понять: цель в зоне или нет.
         entry = self._find_in_overview(state, self.focus)
         if entry is None:
             print(f"[Combat] '{self.focus}' пропал из овервью — бан")
@@ -1710,7 +1703,6 @@ class CombatFSM:
             return
 
         dist = float(entry.get('distance') or 0.0)
-        # Обновляем координаты фокуса — цель движется.
         ex, ey = entry.get('x'), entry.get('y')
         if ex is not None and ey is not None:
             self.focus_coords = (float(ex), float(ey))
@@ -1722,17 +1714,30 @@ class CombatFSM:
         lock_zone_m = float(limit_km) * 1000.0 * \
             float(self.cfg.get('approach_lock_range_ratio', 0.9))
 
-        # Дистанция из овервью может быть 0 (не распарсилась) — тогда
-        # считаем, что уже в зоне и пробуем лочить.
+        # Дистанция 0 = парсер не распарсил — считаем, что в зоне.
         in_zone = (dist <= 0) or (dist <= lock_zone_m)
 
+        # 2. Цель УЖЕ в зоне — лок, таймаут не проверяем.
+        #    Это важно: если цель 40 км, а lock_zone = 63 км — она уже
+        #    в зоне, и мы локнем сразу, независимо от того, сколько
+        #    секунд прошло в APPROACH.
         if in_zone:
             print(f"[Combat] '{self.focus}' в зоне лока "
                   f"({self._fmt_dist(dist)} <= {lock_zone_m/1000:.0f} km) — лок")
             self._set_step('LOCK_CLICK', now)
             return
 
-        # Орбита слетела? Проверяем по state.is_orbiting.
+        # 3. Цель НЕ в зоне. Проверяем таймаут.
+        #    Если цель в момент таймаута в зоне — мы бы уже вышли на шаге 2.
+        #    Значит, здесь она реально далеко — баним.
+        if now - self.step_ts > self.cfg['approach_timeout']:
+            print(f"[Combat] '{self.focus}' — таймаут сближения "
+                  f"({self.cfg['approach_timeout']:.0f}с, "
+                  f"дист {self._fmt_dist(dist)} > {lock_zone_m/1000:.0f} km), бан")
+            self._ban_focus('approach_timeout')
+            return
+
+        # 4. Орбита слетела? Проверяем по state.is_orbiting.
         if not getattr(state, 'is_orbiting', False):
             if now - self._last_orbit_check_ts >= \
                     self.cfg.get('orbit_recheck_cooldown', 6.0):
@@ -1744,7 +1749,7 @@ class CombatFSM:
                     self.input.w_click(x, y)
         else:
             self._last_orbit_check_ts = now
-
+            
     def _tick_lock_click(self, state, off_x, off_y, now) -> None:
         if not self.focus_coords:
             self._reset_to_idle()
