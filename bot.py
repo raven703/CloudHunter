@@ -756,7 +756,15 @@ DEFAULT_CFG: Dict[str, Any] = {
     'slot_hotkey_offset': 0,
 
     # --- дроны ---
-    'drone_relaunch_delay': 3.0,
+   
+    # Кулдаун после recall перед повторным выпуском (Shift+F).
+    # Дрон должен долететь до ангара и успокоиться, иначе EVE проигнорирует
+    # повторный выпуск или выпустит дрона в неверном состоянии.
+    'drone_relaunch_delay': 12.0,
+     # Пауза в ангаре после возврата ВСЕХ дронов, прежде чем выпускать снова.
+    # Нужна, чтобы дрон успел «осесть» и восстановить щит в ангаре.
+    'drone_bay_wait_sec': 7.0,
+
     # Порог щита дрона для recall: 0.5 = 50%. Смотрим ТОЛЬКО щит.
     'drone_hp_recall_ratio': 0.5,
     # Первые N секунд после Shift+F дрон не считается «под атакой»:
@@ -788,6 +796,10 @@ DEFAULT_CFG: Dict[str, Any] = {
     'warp_distance_km': 70,
     'warp_exit_settle': 2.5,
     'arrival_settle_time': 15.0,
+    # Сколько секунд ждать появления NPC после прибытия на аномалию.
+    # Если за это время ни одного NPC-корабля не появилось — считаем
+    # аномалию пустой, ставим её в кулдаун и летим на следующую.
+    'arrival_no_targets_timeout': 30.0,
     # --- прилёт ---
     'modal_enter_attempts': 2,
     # --- орбита: контроль ---
@@ -806,6 +818,10 @@ DEFAULT_CFG: Dict[str, Any] = {
     'repair_missing_warn_interval': 60.0,
     'debug_overview': False,
     'verbose_log': False,
+    # Watchdog для потока бота: если think() живёт дольше этого —
+    # main.py считает поток зависшим и разрешает новый тик.
+    # Троттлинг логов ожидания (сканер/аномалии/цели), сек.
+    'idle_log_interval': 10.0,
     # Watchdog для потока бота: если think() живёт дольше этого —
     # main.py считает поток зависшим и разрешает новый тик.
     'bot_thread_stuck_timeout': 30.0,
@@ -841,6 +857,11 @@ class DroneController:
         self._last_recall_ts: float = 0.0
         self._prev_hp: Dict[str, float] = {}
         self._last_hp_check_ts: float = 0.0
+                # Момент, когда ВСЕ дроны вернулись в ангар (in_space стал 0).
+        # От него отсчитываем паузу drone_bay_wait_sec перед выпуском.
+        self._returned_to_bay_ts: float = 0.0
+                # Сбрасывается, когда in_space == 0 (в recall ИЛИ ensure_attack).
+        self._recall_in_progress: bool = False
 
     # ---------- публичный API ----------
 
@@ -848,10 +869,26 @@ class DroneController:
         """Выпустить дронов и отправить на цель фокуса."""
         if not focus_name:
             return
+        # Идёт возврат — НЕ трогаем дронов (ни F, ни Shift+F).
+        # F в EVE отменяет возврат и отправляет дронов обратно в бой.
+        if self._recall_in_progress:
+            return
         now = time.monotonic()
 
         in_bay = int(getattr(state, 'drones_in_bay', 0) or 0)
         in_space = int(getattr(state, 'drones_in_space', 0) or 0)
+
+        # Отслеживаем момент, когда все дроны вернулись в ангар.
+        # От него — пауза drone_bay_wait_sec перед новым выпуском.
+        if in_space == 0 and in_bay > 0:
+            self._recall_in_progress = False
+            if self._returned_to_bay_ts == 0.0:
+                self._returned_to_bay_ts = now
+                print(f"[Drone] Дроны в ангаре — пауза "
+                      f"{self.cfg.get('drone_bay_wait_sec', 7.0):.0f} с")
+        else:
+            # Дроны снова в космосе (или ангар пуст) — сбрасываем таймер.
+            self._returned_to_bay_ts = 0.0
 
         # 1) Выпуск.
         #
@@ -865,6 +902,12 @@ class DroneController:
         # отрисован), повтор не нужен. Условие `in_space == 0` оставляем,
         # но добавляем жёсткий кулдаун из cfg['drone_launch_cooldown'].
         if in_bay > 0 and in_space == 0:
+            # Пауза в ангаре: дрон должен посидеть и восстановить щит,
+            # прежде чем снова идти в бой.
+            wait_sec = self.cfg.get('drone_bay_wait_sec', 7.0)
+            if self._returned_to_bay_ts > 0.0 and \
+                    now - self._returned_to_bay_ts < wait_sec:
+                return
             if now - self._last_launch_ts < self.cfg.get('drone_launch_cooldown', 5.0):
                 return
             self._last_launch_ts = now
@@ -877,7 +920,13 @@ class DroneController:
             return
 
         # 3) Дроны в космосе — послать на фокус
+        # 3) Дроны в космосе — послать на фокус
         if in_space > 0:
+            # Пауза после выпуска: EVE должна отрисовать дронов и
+            # зарегистрировать их как «готовых», иначе F уходит в никуда.
+            since_launch = now - self._last_launch_ts
+            if since_launch < self.cfg.get('drone_launch_attack_delay', 3.0):
+                return
             same_focus = (norm_name(focus_name) == norm_name(self._last_f_name))
             if not same_focus:
                 print(f"[Drone] Атака '{focus_name}' (F)")
@@ -893,23 +942,77 @@ class DroneController:
                 self._last_f_ts = now
 
 
+
     def recall(self, state) -> bool:
-        """Shift+R. True — если дроны ещё в космосе (или в процессе возврата)."""
+        """Shift+R. True — если дроны ещё в космосе (или в процессе возврата).
+
+        КРИТИЧНО: Shift+R в EVE — это ТОГГЛ возврата. Повторное нажатие
+        ОТМЕНЯЕТ возврат и снова отправляет дронов в бой. Поэтому жать
+        Shift+R можно РОВНО ОДИН РАЗ на цикл «дроны под атакой».
+
+        Условие «один раз»: пока drones_in_space > 0 И мы уже жали
+        Shift+R — НЕ жмём снова. Сбрасываем флаг только когда дроны
+        вернулись (in_space == 0).
+
+        drones_returning (если парсер отдаёт) — дополнительная защита.
+        """
         now = time.monotonic()
         in_space = int(getattr(state, 'drones_in_space', 0) or 0)
+
+        # Дроны вернулись — сбрасываем флаг «recall в процессе», выходим.
         if in_space == 0:
+            self._recall_in_progress = False
             return False
-        if now - self._last_recall_ts < 3.0:
-            return True   # уже собрали только что, ждём
+
+        # Уже в процессе возврата — НЕ жмём повторно. Иначе Shift+R
+        # отменит возврат и дрон снова полетит в бой.
+        if self._recall_in_progress:
+            return True
+
+        # Парсер видит статус returning — дроны уже возвращаются
+        # (например, от прошлого recall или с прошлой сессии).
+        # НЕ ставим _recall_in_progress: мы сами не жали Shift+R,
+        # нечего блокировать. Просто сообщаем «ещё не собраны».
+        if getattr(state, 'drones_returning', False):
+            return True
+
+        # Первый recall в этом цикле — жмём.
         print(f"[Drone] Сбор дронов: {in_space} в космосе (Shift+R)")
         self.input.shift_press('r')
         self._last_recall_ts = now
+        self._recall_in_progress = True
         return True
-
+        
     def on_focus_changed(self) -> None:
         """Фокус убит — следующий ensure_attack пошлёт F на новую цель."""
         self._last_f_name = None
 
+    def in_recall_cooldown(self) -> bool:
+        """True — идёт возврат дронов ИЛИ пауза в ангаре.
+
+        Пока True — Shift+F не жмём, но пушки/локи работают
+        (см. CombatFSM._tick_attack).
+        """
+        # Идёт возврат — дроны вообще не трогаем (ни F, ни Shift+F).
+        # F в EVE отменяет возврат и отправляет дронов обратно в бой.
+        if self._recall_in_progress:
+            return True
+        now = time.monotonic()
+        if self._last_recall_ts > 0.0 and \
+                now - self._last_recall_ts < self.cfg.get('drone_relaunch_delay', 12.0):
+            return True
+        if self._returned_to_bay_ts > 0.0 and \
+                now - self._returned_to_bay_ts < \
+                self.cfg.get('drone_bay_wait_sec', 7.0):
+            return True
+        return False
+    def has_drones_in_space_or_recalling(self, state) -> bool:
+        """True — дроны в космосе ИЛИ возвращаются (recall нажат)."""
+        if int(getattr(state, 'drones_in_space', 0) or 0) > 0:
+            return True
+        return self._recall_in_progress
+
+    
     def update_hp_guard(self, state) -> bool:
         """True = дрона бьют (щит < порога), надо recall.
 
@@ -930,6 +1033,9 @@ class DroneController:
         """
         in_space = int(getattr(state, 'drones_in_space', 0) or 0)
         if in_space == 0:
+            # Дроны вернулись — сбрасываем флаг «recall в процессе»,
+            # иначе он залипнет и следующий recall не сработает.
+            self._recall_in_progress = False
             return False
 
         now = time.monotonic()
@@ -967,7 +1073,7 @@ class DroneController:
         # в парсере может выставляться неточно. У нас теперь есть точный
         # shield_pct в каждой записи.
         return False
-
+    
 # =============================================================================
 # MODULE CONTROLLER
 # =============================================================================
@@ -1051,6 +1157,7 @@ class ModuleController:
             return
         if getattr(state, 'is_warp', False) or getattr(state, 'is_establishing', False):
             return
+        
         if time.monotonic() - self._prop_keep_off_ts < self.cfg['prop_keep_off_time']:
             return
         for name, status in prop_modules.items():
@@ -1231,11 +1338,15 @@ class SafetyController:
                 self._start_warp_to_safe(state, off_x=off_x, off_y=off_y, force=True)
             return True
 
+        # 1. Подтверждение варпа
         if self._fsm == 'WARP_CLICKED':
             if getattr(state, 'is_warp', False) or getattr(state, 'is_establishing', False):
-                print(f"[Safety] Варп к '{self._current_spot}' подтверждён")
-                # Safety НЕ выключаем — пусть think() решает, устранена ли угроза.
-                self._fsm = 'IDLE'
+                print(f"[Mission] Варп '{self._current_anom}' подтверждён")
+                # Один Enter — на случай модалки, которая всплывает
+                # при старте варпа (неевклидовы аномалии и т.п.).
+                pyautogui.press('enter')
+                self._visited[self._current_anom or '?'] = now
+                self.reset()
                 return True
             if now - self._fsm_ts >= self.cfg['warp_confirm_timeout']:
                 print("[Safety] Варп не подтвердился — повтор")
@@ -1376,6 +1487,7 @@ class MissionFSM:
         self._submenu_seen_ts: Optional[float] = None
         self._visited: Dict[str, float] = {}
         self._arrival_ts = 0.0
+        self._last_idle_log_ts: float = 0.0
 
     # ---------- публичный API ----------
 
@@ -1398,6 +1510,21 @@ class MissionFSM:
         if self._current_anom:
             self._visited[self._current_anom] = time.time()
             print(f"[Mission] Прибыли на '{self._current_anom}'")
+        self.reset()
+
+    def mark_skipped(self, why: str = '') -> None:
+        """Пометить текущую аномалию как «отработанную» и сбросить FSM.
+
+        Используется, когда мы прилетели на аномалию, но NPC не появились
+        (пустая аномалия / NPC не заспавнились / их убили до нас). Ставим
+        её в anomaly_revisit_cooldown, чтобы бот не пытался варпнуться
+        на неё снова, и переходим к следующей.
+        """
+        if self._current_anom:
+            self._visited[self._current_anom] = time.time()
+            suffix = f" ({why})" if why else ""
+            print(f"[Mission] Пропуск '{self._current_anom}'{suffix} "
+                  f"— кулдаун {self.cfg['anomaly_revisit_cooldown']}с")
         self.reset()
 
     def tick(self, state, off_x: int, off_y: int) -> bool:
@@ -1507,22 +1634,45 @@ class MissionFSM:
         now = time.time()
         flt = str(self.cfg.get('anomaly_group_filter') or '').lower()
         out = []
+        total_scans = 0
+        skipped_cooldown = 0
+        skipped_no_coords = 0
+        skipped_filter = 0
         for r in (getattr(state, 'scan_results', None) or []):
+            total_scans += 1
             name = str(r.get('name') or '')
             group = str(r.get('group') or '')
             if not name and not group:
                 continue
             blob = f"{name} {group}".lower()
             if flt and flt not in blob:
+                skipped_filter += 1
                 continue
             key = name or group
             if now - self._visited.get(key, 0) < self.cfg['anomaly_revisit_cooldown']:
+                skipped_cooldown += 1
                 continue
             if r.get('x') is None or r.get('y') is None:
+                skipped_no_coords += 1
                 continue
             out.append(r)
-        return out
 
+        # Троттлированный лог: раз в idle_log_interval сек объясняем,
+        # почему нет кандидатов (фильтр/кулдаун/координаты).
+        if not out:
+            interval = self.cfg.get('idle_log_interval', 10.0)
+            if now - self._last_idle_log_ts >= interval:
+                self._last_idle_log_ts = now
+                if total_scans == 0:
+                    print("[Mission] Сканер пуст — сигнатур нет, жду")
+                else:
+                    print(f"[Mission] Нет аномалий для полёта: "
+                          f"всего={total_scans} "
+                          f"фильтр='{flt or '-'}' отсеял={skipped_filter} "
+                          f"кулдаун={skipped_cooldown} "
+                          f"без координат={skipped_no_coords} — жду")
+        return out
+    
 # =============================================================================
 # COMBAT FSM — единый боевой автомат
 # =============================================================================
@@ -1560,6 +1710,7 @@ class CombatFSM:
         self.focus: Optional[str] = None
         self.focus_class: Optional[str] = None
         self.focus_coords: Optional[Tuple[float, float]] = None
+        self._arrival_settle_until: float = 0.0
 
         # счётчики / таймеры
         self._lock_attempts: int = 0
@@ -1573,6 +1724,7 @@ class CombatFSM:
         self._combat_start_ts = 0.0
         # Для APPROACH: последняя перепроверка орбиты
         self._last_orbit_check_ts: float = 0.0
+        self._last_idle_log_ts: float = 0.0
 
     # ---------- свойства для обратной совместимости с main.py ----------
 
@@ -1593,10 +1745,20 @@ class CombatFSM:
         pass
 
     # ---------- публичный API ----------
+    
+    def arrival_settle_active(self) -> bool:
+        """True — идёт settle после выхода из варпа."""
+        return time.monotonic() < self._arrival_settle_until
+
 
     def on_warp_exit(self) -> None:
         """Вызывается из EveBot в тике выхода из варпа."""
         self._just_exited_warp = True
+        # Settle стартует ровно сейчас. Держим боевой цикл на паузе
+        # warp_exit_settle секунд, даже если NPC уже появились в дампе.
+        self._arrival_settle_until = time.monotonic() + self.cfg['warp_exit_settle']
+        print(f"[Combat] Выход из варпа — settle "
+              f"{self.cfg['warp_exit_settle']:.1f} с (до старта боя)")
 
     def is_active(self, state) -> bool:
         """Есть ли боевые цели — бот должен заниматься боем."""
@@ -1606,14 +1768,18 @@ class CombatFSM:
         """Один шаг FSM. Все переходы — здесь."""
         now = time.monotonic()
 
-        # 0. Прилёт — settle-пауза
+        # 0. Settle после выхода из варпа. Блокируем ЛЮБЫЕ боевые
+        #    действия (даже если NPC уже в дампе) до истечения
+        #    warp_exit_settle. Это гарантирует, что корабль реально
+        #    остановился, а парсер успел обновить is_warp/is_establishing.
+        if now < self._arrival_settle_until:
+            return
+        # Settle только что истёк — сбрасываем флаг _just_exited_warp,
+        # чтобы старый флаг от предыдущего прилёта не сработал повторно.
         if self._just_exited_warp:
             self._just_exited_warp = False
             self._combat_start_ts = now
-            print(f"[Combat] Выход из варпа — settle {self.cfg['warp_exit_settle']:.1f} с")
-        if (self._combat_start_ts > 0 and
-                now - self._combat_start_ts < self.cfg['warp_exit_settle']):
-            return
+            print("[Combat] Settle завершён — начинаю боевой цикл")
 
         # 1. Обновить живой фокус (мёртв / вышел за радиус)
         self._refresh_focus(state)
@@ -1639,7 +1805,6 @@ class CombatFSM:
             self._tick_focus_dead(state, off_x, off_y, now)
         else:
             self._reset_to_idle()
-
     def on_safety_recall(self, state) -> bool:
         """Сбор дронов перед отходом. True — ещё в космосе."""
         return self.drones.recall(state)
@@ -1647,6 +1812,11 @@ class CombatFSM:
     # ---------- FSM: состояния ----------
 
     def _enter_select(self, state, off_x, off_y, now) -> None:
+        # Страховка: settle истёк, но парсер всё ещё показывает варп
+        # (дампа отстаёт) — не начинаем бой, ждём следующего тика.
+        if getattr(state, 'is_warp', False) or getattr(state, 'is_establishing', False):
+            return
+
         existing = list(state.targets or [])
         if existing:
             first = existing[0]
@@ -1661,6 +1831,7 @@ class CombatFSM:
             self._set_step('ATTACK', now)
             return
 
+        # Кандидаты — ТОЛЬКО NPC-корабли (npc_class is not None).
         cand = self._lock_candidates(state)
         if cand:
             first = cand[0]
@@ -1674,7 +1845,8 @@ class CombatFSM:
             self._entry_attempts = 0
             self.drones.on_focus_changed()
             print(f"[Combat] Цель -> '{self.focus}' "
-                  f"({self._fmt_dist(first.get('distance'))}, {self.focus_class or '?'})")
+                  f"({self._fmt_dist(first.get('distance'))}, "
+                  f"{self.focus_class or '?'})")
             self._set_step('SELECT', now)
             self.input.click(int(self.focus_coords[0] + off_x),
                              int(self.focus_coords[1] + off_y))
@@ -1682,9 +1854,8 @@ class CombatFSM:
 
         # Fallback: овервью пуст ИЛИ все его записи отфильтрованы,
         # но NPC в brackets (SpaceObjectIcon) — state.npc_all.
-        # Берём первую иконку и сразу идём в LOCK_CLICK: Ctrl+клик
-        # по иконке EVE сам залочит цель, а со следующего тика
-        # state.targets заполнится настоящим именем.
+        # state.npc_all заполняется ТОЛЬКО NPC-иконками (parse_npc_lists
+        # ищет 'npc*' в текстуре), поэтому планеты/солнце сюда не попадут.
         npc_icons = list(getattr(state, 'npc_all', None) or [])
         if npc_icons:
             ix, iy = npc_icons[0]
@@ -1700,7 +1871,7 @@ class CombatFSM:
                   f"клик по иконке @ ({int(ix)},{int(iy)}) — лок")
             self._set_step('LOCK_CLICK', now)
             return
-               
+
     def _tick_select(self, state, off_x, off_y, now) -> None:
         if now - self.step_ts < self.cfg['select_wait']:
             return
@@ -1737,17 +1908,19 @@ class CombatFSM:
         """Орбита активна. Ждём, пока цель войдёт в зону лока.
 
         Логика:
-          * Сначала находим цель в овервью (актуальная дистанция и коорд.)
-            и считаем зону лока. Если цель УЖЕ в зоне — сразу LOCK_CLICK,
-            БЕЗ проверки таймаута (таймаут неактуален, если цель достигнута).
-          * Таймаут: если цель НЕ в зоне и прошло > approach_timeout —
-            баним цель (кроме случая, когда она всё-таки успела войти
-            в зону — тогда лок, а не бан).
+          * Активируем фокус (клик по строке лока), если он не активен —
+            иначе W+клик не сработает (W работает по выделенной цели).
+          * Если цель УЖЕ в зоне — сразу LOCK_CLICK, без проверки таймаута.
+          * Если цель НЕ в зоне и прошло > approach_timeout — баним цель.
           * Пока не в зоне и таймаут не вышел — перепроверяем орбиту:
             если слетела, повторяем W+клик.
         """
         if not self.focus:
             self._reset_to_idle()
+            return
+
+        # Активируем фокус: без выделенной цели W+клик уходит в никуда.
+        if not self._ensure_active(state, off_x, off_y):
             return
 
         # 1. Ищем цель в овервью (по имени) — нужна до проверки таймаута,
@@ -1770,13 +1943,9 @@ class CombatFSM:
         lock_zone_m = float(limit_km) * 1000.0 * \
             float(self.cfg.get('approach_lock_range_ratio', 0.9))
 
-        # Дистанция 0 = парсер не распарсил — считаем, что в зоне.
         in_zone = (dist <= 0) or (dist <= lock_zone_m)
 
         # 2. Цель УЖЕ в зоне — лок, таймаут не проверяем.
-        #    Это важно: если цель 40 км, а lock_zone = 63 км — она уже
-        #    в зоне, и мы локнем сразу, независимо от того, сколько
-        #    секунд прошло в APPROACH.
         if in_zone:
             print(f"[Combat] '{self.focus}' в зоне лока "
                   f"({self._fmt_dist(dist)} <= {lock_zone_m/1000:.0f} km) — лок")
@@ -1784,8 +1953,6 @@ class CombatFSM:
             return
 
         # 3. Цель НЕ в зоне. Проверяем таймаут.
-        #    Если цель в момент таймаута в зоне — мы бы уже вышли на шаге 2.
-        #    Значит, здесь она реально далеко — баним.
         if now - self.step_ts > self.cfg['approach_timeout']:
             print(f"[Combat] '{self.focus}' — таймаут сближения "
                   f"({self.cfg['approach_timeout']:.0f}с, "
@@ -1801,11 +1968,12 @@ class CombatFSM:
                 if self.focus_coords:
                     x = int(self.focus_coords[0] + off_x)
                     y = int(self.focus_coords[1] + off_y)
-                    print(f"[Combat] '{self.focus}' — орбита слетела, повтор W+клик")
+                    print(f"[Combat] '{self.focus}' — орбита слетела, "
+                          f"повтор W+клик")
                     self.input.w_click(x, y)
         else:
             self._last_orbit_check_ts = now
-            
+
     def _tick_lock_click(self, state, off_x, off_y, now) -> None:
         if not self.focus_coords:
             self._reset_to_idle()
@@ -1870,19 +2038,50 @@ class CombatFSM:
             self._set_step('LOCK_CLICK', now)
 
     def _tick_attack(self, state, off_x, off_y, now) -> None:
-        # 1. Активировать фокус (клик по строке лока, если он не активен)
+        # 1. Активировать фокус (клик по строке лока, если он не активен).
+        #    Если только что кликнули — в этом тике не трогаем орбиту,
+        #    чтобы не отправить W+клик по невыделенной цели.
         if not self._ensure_active(state, off_x, off_y):
-            return   # кликнули — ждём следующего тика
-        # 2. Дроны — выпуск/атака/recall
+            return
+
+        # 2. Дроны — выпуск/атака/recall.
+        #    ВАЖНО: дроны НЕ блокируют орбиту/пушки/до-захват.
+        #    Если дроны под атакой — вызываем recall, но продолжаем
+        #    вести бой: орбита держит дистанцию, пушки стреляют,
+        #    до-захват работает. Раньше был early return — и на всё
+        #    время recall (десятки секунд) орбита не контролировалась,
+        #    корабль стоял и получал полный DPS.
+        drones_recalled = False
         if self.drones.update_hp_guard(state):
             self.drones.recall(state)
-            return
-        self.drones.ensure_attack(state, self.focus)
-        # 3. Пушки
+            drones_recalled = True
+        elif not self.drones.in_recall_cooldown():
+            self.drones.ensure_attack(state, self.focus)
+        # В остальных случаях (in_recall_cooldown и не под атакой) —
+        # дронов не трогаем, но орбиту/пушки/до-захват ведём.
+
+        # 3. Орбита: если слетела — повторяем W+клик по фокусу.
+        #    Выполняется ВСЕГДА, независимо от состояния дронов.
+        if self.focus and not getattr(state, 'is_orbiting', False):
+            if now - self._last_orbit_check_ts >= \
+                    self.cfg.get('orbit_recheck_cooldown', 6.0):
+                self._last_orbit_check_ts = now
+                if self.focus_coords:
+                    x = int(self.focus_coords[0] + off_x)
+                    y = int(self.focus_coords[1] + off_y)
+                    print(f"[Combat] '{self.focus}' — орбита слетела, "
+                          f"повтор W+клик")
+                    self.input.w_click(x, y)
+        else:
+            self._last_orbit_check_ts = now
+
+        # 4. Пушки — стреляем, пока фокус в локах.
         self._press_guns(state, now)
-        # 4. До-захват новых целей до lock_batch_size
+
+        # 5. До-захват новых целей до lock_batch_size.
         self._maintain_locks(state, off_x, off_y, now)
-        # 5. Фокус мёртв?
+
+        # 6. Фокус мёртв?
         if not self._focus_in_targets(state):
             self._set_step('FOCUS_DEAD', now)
 
@@ -1898,11 +2097,24 @@ class CombatFSM:
         self._reset_to_idle()
 
     # ---------- внутреннее ----------
+    def reset(self) -> None:
+        """Полный сброс боевого FSM (после окончания боя)."""
+        self.input.w_up()
+        self.step = 'IDLE'
+        self.step_ts = time.monotonic()
+        self.focus = None
+        self.focus_class = None
+        self.focus_coords = None
+        self._lock_attempts = 0
+        self._entry_attempts = 0
+        self._last_orbit_check_ts = 0.0
 
     def _reset_to_idle(self) -> None:
         self.step = 'IDLE'
         self.step_ts = time.monotonic()
         self._lock_attempts = 0
+
+
 
     def _set_step(self, step: str, now: float) -> None:
         self.step = step
@@ -1965,7 +2177,17 @@ class CombatFSM:
                    for t in (state.targets or []))
 
     def _ensure_active(self, state, off_x, off_y) -> bool:
-        """True — фокус уже активен; False — сделали клик, ждём тика."""
+        """True — фокус активен или нечего активировать; False — сделали клик.
+
+        Ослабленное условие: если дампер не отдал active_target (None),
+        НЕ считаем это поводом кликать — иначе на каждом тике делаем
+        клик по строке лока и блокируем орбиту/пушки.
+
+        Клик делаем только когда:
+          * active_target есть в дампе, И
+          * его имя не совпадает с фокусом, И
+          * focus_t.is_active == False.
+        """
         if not self.focus:
             return True
         fn = norm_name(self.focus)
@@ -1975,12 +2197,22 @@ class CombatFSM:
                 focus_t = t
                 break
         if focus_t is None:
+            # Цель не в локах — нечего активировать, пусть FSM сам решит.
             return True
+
         active = getattr(state, 'active_target', None)
-        if focus_t.get('is_active') or \
-                norm_name((active or {}).get('name')) == fn:
+
+        # 1. Дампер прямо подтверждает активность фокуса.
+        if focus_t.get('is_active'):
             return True
-        # Клик по строке лока фокуса (анти-спам 1.5 сек, свой таймер)
+        if active and norm_name(active.get('name')) == fn:
+            return True
+        # 2. Дампер НЕ отдал active_target (None) — не считаем это поводом
+        #    кликать. Иначе на каждом тике клик, орбита не проверяется.
+        if not active:
+            return True
+
+        # 3. active_target есть, но это ДРУГАЯ цель — кликаем по фокусу.
         now = time.monotonic()
         if now - self._last_focus_click_ts < 1.5:
             return False
@@ -1990,7 +2222,7 @@ class CombatFSM:
         self.input.click_raw(tx, ty)
         self._last_focus_click_ts = now
         return False
-
+    
     def _press_guns(self, state, now: float) -> None:
         if not self.cfg.get('auto_attack'):
             return
@@ -2064,8 +2296,19 @@ class CombatFSM:
 
     def _lock_candidates(self, state, exclude_locked: bool = False,
                          apply_range_filter: bool = False) -> List[Dict]:
-        """Кандидаты на захват.
-        ... (докстринг оставить)
+        """Кандидаты на захват — ТОЛЬКО NPC-корабли (npc_class is not None).
+
+        Главный фильтр: объект без npc_class целью не считается. Это
+        отсекает планеты, солнце, луну, станции, гейты, цитадели,
+        контейнеры, обломки и прочий не-NPC мусор овервью, у которого
+        парсер не проставил type (раньше такие объекты попадали в цели).
+
+        Сортировка кандидатов:
+          1) фрегаты (ближний к нам — первым),
+          2) линкоры (ближний — первым),
+          3) остальные NPC (ближний — первым).
+        Если cfg['post_frigate_priority'] == 'random' — после фрегатов
+        линкоры и остальные перемешиваются.
         """
         now = time.time()
         ov = list(getattr(state, 'overview_entries', None) or [])
@@ -2084,16 +2327,19 @@ class CombatFSM:
             for t in (state.targets or []):
                 locked_names.add(norm_name(t.get('name')))
 
-        env_types = ('station', 'stargate', 'planet', 'asteroid',
-                     'citadel', 'wormhole')
         frig, bs, rest = [], [], []
         for e in ov:
             name = str(e.get('name') or '').strip()
             if not name:
                 print(f"[Combat]   skip: no name; e={e}")
                 continue
-            if str(e.get('type') or '').lower() in env_types:
-                print(f"[Combat]   skip: env type {name} type={e.get('type')}")
+
+            # ГЛАВНЫЙ ФИЛЬТР: целью может быть ТОЛЬКО NPC-корабль.
+            # npc_class заполняется парсером по иконке или по имени.
+            npc_class = e.get('npc_class')
+            if not npc_class:
+                print(f"[Combat]   skip: not npc {name} "
+                      f"type={e.get('type')}")
                 continue
 
             dist = float(e.get('distance') or 0.0)
@@ -2116,15 +2362,15 @@ class CombatFSM:
             if apply_range_filter and limit_m and dist > 0 and dist > limit_m:
                 print(f"[Combat]   skip: out of range {name} d={dist} > {limit_m}")
                 continue
+
             item = {
                 'name': name, 'x': float(x), 'y': float(y),
-                'distance': dist, 'npc_class': e.get('npc_class'),
+                'distance': dist, 'npc_class': npc_class,
             }
-            cls = e.get('npc_class')
-            print(f"[Combat]   ok: {name} d={dist} cls={cls} x={x} y={y}")
-            if cls == 'FRIGATE':
+            print(f"[Combat]   ok: {name} d={dist} cls={npc_class} x={x} y={y}")
+            if npc_class == 'FRIGATE':
                 frig.append(item)
-            elif cls == 'BATTLESHIP':
+            elif npc_class == 'BATTLESHIP':
                 bs.append(item)
             else:
                 rest.append(item)
@@ -2143,17 +2389,70 @@ class CombatFSM:
             return frig + after
         return frig + bs + rest
 
+    
     def _has_hostile_npcs(self, state) -> bool:
-        env_types = ('station', 'stargate', 'planet', 'asteroid',
-                     'citadel', 'wormhole')
+        """True — есть NPC-корабли (цели).
+
+        Целью считается ТОЛЬКО объект с заполненным npc_class. Планеты,
+        солнце, луна, станции, гейты, цитадели, контейнеры, обломки и
+        прочие объекты овервью целью НЕ являются, даже если у них пустой
+        type в парсере.
+
+        npc_class заполняется парсером (parse_overview_entry):
+          * по текстуре иконки SpaceObjectIcon (npcfrigate/npccruiser/
+            npcbattleship/npcbattlecruiser/npcdestroyer);
+          * fallback по имени из словаря NPC-паттернов (pithi, guristas,
+            sansha, angel, blood, serpentis, drone, mercenary, ...).
+
+        Если npc_class не распознан — объект целью не считается.
+        """
         for e in (getattr(state, 'overview_entries', None) or []):
             if e.get('npc_class'):
                 return True
-            if e.get('npc_class') is None and \
-                    str(e.get('type') or '').lower() not in env_types:
-                if e.get('name'):
-                    return True
-        return bool(getattr(state, 'npc_all', None))
+        return False
+
+    def log_idle_wait(self, state) -> None:
+        """Троттлированный лог: чего ждём в IDLE.
+
+        Вызывается из EveBot._step_combat, когда бой не активен.
+        Раз в idle_log_interval сек печатает:
+          * сколько NPC в овервью (npc_class), сколько в брекетах;
+          * есть ли цели в state.targets;
+          * чего именно ждём (аномалия/цели/дроны/варп).
+        """
+        now = time.monotonic()
+        interval = self.cfg.get('idle_log_interval', 10.0)
+        if now - self._last_idle_log_ts < interval:
+            return
+        self._last_idle_log_ts = now
+
+        ov = list(getattr(state, 'overview_entries', None) or [])
+        npc_in_ov = sum(1 for e in ov if e.get('npc_class'))
+        npc_brackets = len(getattr(state, 'npc_all', None) or [])
+        targets = len(getattr(state, 'targets', None) or [])
+        drones_space = int(getattr(state, 'drones_in_space', 0) or 0)
+        drones_bay = int(getattr(state, 'drones_in_bay', 0) or 0)
+        is_warp = bool(getattr(state, 'is_warp', False) or
+                       getattr(state, 'is_establishing', False))
+
+        if is_warp:
+            print(f"[Bot] IDLE: варп/выравнивание — жду выхода "
+                  f"(целей={targets}, NPC в овервью={npc_in_ov})")
+        elif targets > 0:
+            print(f"[Bot] IDLE: цели уже есть ({targets}), "
+                  f"NPC в овервью={npc_in_ov}, в брекетах={npc_brackets}")
+        elif npc_in_ov > 0:
+            print(f"[Bot] IDLE: NPC в овервью={npc_in_ov} — начинаю бой")
+        elif npc_brackets > 0:
+            print(f"[Bot] IDLE: NPC только в брекетах={npc_brackets} — "
+                  f"пробую лок по иконке")
+        elif drones_space > 0:
+            print(f"[Bot] IDLE: дроны в космосе={drones_space} — "
+                  f"жду возврата (в ангаре={drones_bay})")
+        else:
+            print(f"[Bot] IDLE: целей нет — жду аномалию "
+                  f"(овервью={len(ov)}, "
+                  f"сигнатур={len(getattr(state, 'scan_results', None) or [])})")
 
     @staticmethod
     def _fmt_dist(meters) -> str:
@@ -2206,9 +2505,16 @@ class EveBot:
         self._probe_open_ts = 0.0
         self._probe_opening = False
         self._probe_attempts = 0
+        self._last_drone_wait_log_ts = 0.0
+        # Одноразовые логи сканера (без спама на каждом тике).
+        self._probe_open_logged = False
+        self._probe_failed_logged = False
 
         # --- трекинг варпа (для settle после выхода) ---
         self._last_was_warp = False
+        # Момент прибытия на аномалию: старт таймера ожидания NPC.
+        # 0.0 — таймер не запущен (нет активной аномалии / миссия в IDLE).
+        self._arrival_no_targets_ts = 0.0
 
         # --- статистика сессии (общая с main.py) ---
         self.stats = stats if stats is not None else {
@@ -2256,6 +2562,9 @@ class EveBot:
         self._probe_open_ts = 0.0
         self._probe_opening = False
         self._probe_attempts = 0
+        self._probe_open_logged = False
+        self._probe_failed_logged = False
+        self._last_drone_wait_log_ts = 0.0
         self._last_was_warp = False
         self._prev_locked_count = 0
         self._had_npcs = False
@@ -2273,6 +2582,7 @@ class EveBot:
         self.combat.focus_coords = None
         self.combat._skip_coords.clear()
         self.combat._just_exited_warp = False
+        self.combat._arrival_settle_until = 0.0
         self.combat._combat_start_ts = 0.0
         self.combat._lock_attempts = 0
         self.combat._entry_attempts = 0
@@ -2281,6 +2591,12 @@ class EveBot:
         self.combat._last_orbit_check_ts = 0.0
         self.drones._last_f_name = None
         self.drones._last_f_ts = 0.0
+        self.drones._recall_in_progress = False
+        self.drones._returned_to_bay_ts = 0.0
+        self.drones._last_recall_ts = 0.0
+        self.drones._last_launch_ts = 0.0
+        # Сброс таймера ожидания NPC после прибытия на аномалию.
+        self._arrival_no_targets_ts = 0.0
 
     def apply_action(self, action: dict) -> bool:
         """Приём команды от NN-канала. Пока реализованы EMERGENCY_EXIT и IDLE."""
@@ -2550,16 +2866,39 @@ class EveBot:
         Ограничение: не более probe_max_attempts попыток за сессию. Если
         окно так и не открылось (у корабля нет сканера) — сдаёмся и больше
         не блокируем бой.
+
+        Логи (без спама):
+          * 'Probe Scanner открыт (N сигнатур)' — ОДИН РАЗ за сессию
+            (флаг _probe_open_logged), не на каждом тике;
+          * 'Probe Scanner закрыт — Alt+P (попытка k/N)' — при попытке
+            открыть (один раз на попытку);
+          * 'Probe Scanner не открылся за N попыток — работаю без него' —
+            когда сдались (один раз).
         """
-        if getattr(state, 'probe_scanner_open', False):
+        is_open = bool(getattr(state, 'probe_scanner_open', False))
+
+        if is_open:
+            # Печатаем ОДИН РАЗ за сессию — флаг _probe_open_logged.
+            if not self._probe_open_logged:
+                self._probe_open_logged = True
+                n_sig = len(getattr(state, 'scan_results', None) or [])
+                print(f"[Bot] Probe Scanner открыт ({n_sig} сигнатур)")
             self._probe_opening = False
             self._probe_attempts = 0
             return False
+
         if state.is_docked or state.is_loading:
             return False
-        # Больше не пытаемся — не блокируем бой
+
+        # Больше не пытаемся — не блокируем бой. Лог один раз.
         if self._probe_attempts >= self.cfg.get('probe_max_attempts', 3):
+            if not self._probe_failed_logged:
+                self._probe_failed_logged = True
+                print(f"[Bot] Probe Scanner не открылся за "
+                      f"{self._probe_attempts} попыток — работаю без него")
+            self._probe_opening = False
             return False
+
         now = time.monotonic()
         if not self._probe_opening:
             print(f"[Bot] Probe Scanner закрыт — Alt+P "
@@ -2574,17 +2913,71 @@ class EveBot:
         return True
 
     def _step_mission(self, state) -> bool:
+        # Settle после выхода из варпа: не начинаем новую миссию,
+        # пока корабль не остановился и парсер не подтвердил статус.
+        if self.combat.arrival_settle_active():
+            return False
+
+        # Не начинаем миссию, пока дроны в космосе или возвращаются.
+        if self.drones.has_drones_in_space_or_recalling(state):
+            now = time.monotonic()
+            interval = self.cfg.get('idle_log_interval', 10.0)
+            if now - self._last_drone_wait_log_ts >= interval:
+                self._last_drone_wait_log_ts = now
+                print(f"[Bot] Миссия на паузе: дроны в космосе/"
+                      f"возвращаются "
+                      f"(в космосе={getattr(state, 'drones_in_space', 0)}, "
+                      f"в ангаре={getattr(state, 'drones_in_bay', 0)}) — жду")
+            return False
+
+        # --- ТАЙМЕР ОЖИДАНИЯ NPC НА АНОМАЛИИ ---
+        # Если мы уже прилетели на аномалию (mission._current_anom != None,
+        # не в варпе, не в доке/загрузке) и NPC не появились — считаем
+        # время. По истечении arrival_no_targets_timeout помечаем аномалию
+        # пустой и летим на следующую.
+        on_anomaly = (
+            self.mission.current_anom() is not None
+            and not state.is_warp
+            and not getattr(state, 'is_establishing', False)
+            and not getattr(state, 'is_docked', False)
+            and not getattr(state, 'is_loading', False)
+        )
+        has_npcs = self.combat.is_active(state)
+
+        if on_anomaly and not has_npcs:
+            now = time.monotonic()
+            if self._arrival_no_targets_ts == 0.0:
+                # Первый тик на аномалии без NPC — стартуем таймер.
+                self._arrival_no_targets_ts = now
+                print(f"[Bot] На аномалии "
+                      f"'{self.mission.current_anom()}' NPC нет — "
+                      f"жду {self.cfg['arrival_no_targets_timeout']:.0f}с")
+            elif now - self._arrival_no_targets_ts >= \
+                    self.cfg.get('arrival_no_targets_timeout', 30.0):
+                # Таймаут — аномалия пустая, летим на следующую.
+                timeout = self.cfg.get('arrival_no_targets_timeout', 30.0)
+                print(f"[Bot] NPC не появились за {timeout:.0f}с — "
+                      f"аномалия пустая, лечу на следующую")
+                self.mission.mark_skipped('no_npc')
+                self._arrival_no_targets_ts = 0.0
+                # На следующем тике MissionFSM выберет новую аномалию.
+                return False
+        else:
+            # Либо не на аномалии, либо NPC появились — сбрасываем таймер.
+            self._arrival_no_targets_ts = 0.0
+
         # Если есть NPC — миссия не нужна, идём в бой.
         # Сбрасываем незавершённую миссию: если мы уже открыли меню/подменю,
         # то после боя продолжать с этого места нельзя (окно закроется,
         # координаты протухнут).
-        if self.combat.is_active(state):
+        if has_npcs:
             if self.mission.state_name() != 'IDLE':
                 self.mission.reset()
             return False
         off_x, off_y = self.windows.offset()
         return self.mission.tick(state, off_x, off_y)
 
+    
     def _step_modules(self, state) -> None:
         """Репки/двигатель. Side effect, тик не занимает."""
         off_x, off_y = self.windows.offset()
@@ -2592,12 +2985,28 @@ class EveBot:
         self.modules.ensure_modules(state, off_x, off_y, in_combat)
 
     def _step_combat(self, state) -> bool:
+        # Пока идёт settle после выхода из варпа — не начинаем бой,
+        # даже если NPC уже в дампе. Даём tick() сбросить флаги settle.
+        if self.combat.arrival_settle_active():
+            off_x, off_y = self.windows.offset()
+            self.combat.tick(state, off_x, off_y)
+            return True
+
         if not self.combat.is_active(state):
             # Бой кончился — если дроны в космосе, собираем
             if getattr(state, 'drones_in_space', 0) > 0:
                 self.drones.recall(state)
                 return True
+            # Дроны собраны — сбрасываем боевой FSM,
+            # иначе останется висеть старый фокус/step
+            if self.combat.step != 'IDLE':
+                self.combat.reset()
+            # Троттлированный лог: чего ждём (нет целей / нет аномалий / варп)
+            self.combat.log_idle_wait(state)
             return False
+
+        # NPC появились — таймер ожидания пустой аномалии больше не нужен.
+        self._arrival_no_targets_ts = 0.0
 
         off_x, off_y = self.windows.offset()
 
